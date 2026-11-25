@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, pager, empty %}
+{% block title %}Sessions {{ ws }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/sessions">Sessions</a></li><li>{{ ws }}</li></ul></div>
+<h1 class="page-title">Sessions: {{ ws }}</h1>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table table-sm">
+    <thead><tr><th>Created</th><th>Client session</th><th>Token</th><th>Revisions</th></tr></thead>
+    <tbody>
+    {% for s in rows %}
+      <tr class="hover:bg-base-200">
+        <td class="whitespace-nowrap text-xs opacity-70">{{ s.created_at | when }}</td>
+        <td class="font-mono text-xs">{{ s.client_session_id | short(60) }}</td>
+        <td class="whitespace-nowrap">{{ s.token_label }} <span class="opacity-60">({{ s.token_id }})</span></td>
+        <td>
+          {% for r in s.revisions %}
+          <span class="mr-2 inline-flex items-center gap-1 whitespace-nowrap text-xs">#{{ r.n }} {{ badge(r.status) }}{% if r.distill_status %}, distill {{ r.distill_status }}{% endif %}{% if r.has_generation %}, generated{% endif %}{% if not loop.last %};{% endif %}</span>
+          {% endfor %}
+        </td>
+      </tr>
+    {% else %}
+      {{ empty(4, "No sessions.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pager(
+  ("/memory/" ~ (ws | urlencode) ~ "/sessions?offset=" ~ prev) if (prev is not none and offset > 0) else "",
+  ("/memory/" ~ (ws | urlencode) ~ "/sessions?offset=" ~ next) if next is not none else "",
+) }}
+{% endblock %}

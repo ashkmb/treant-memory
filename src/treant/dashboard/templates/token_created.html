@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Token created{% endblock %}
+{% block content %}
+<div class="card mx-auto max-w-3xl bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h1 class="card-title text-2xl">Token created</h1>
+    <p>Workspace <strong>{{ ws }}</strong>, label <strong>{{ label }}</strong>, actions {{ actions | join(", ") }}.</p>
+    <p role="alert" class="alert alert-warning alert-soft">Copy it now. It will not be shown again.</p>
+    <p><input readonly size="80" value="{{ token }}" aria-label="token" class="input w-full font-mono text-sm"></p>
+    <p>On the machine that uses it, run:</p>
+    <pre class="rounded-box bg-base-200 p-3 text-sm">treant-client token set {{ ws }}</pre>
+    <div class="card-actions mt-2"><a class="btn btn-sm" href="/tokens">Back to tokens</a></div>
+  </div>
+</div>
+{% endblock %}

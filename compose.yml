@@ -1,0 +1,115 @@
+# Treant quickstart: one machine, everything on loopback. See README.md, "Quickstart".
+# For a hardened production layout see docs/deploy.md.
+#
+# Needs a .env file next to this one (copy .env.example):
+#   POSTGRES_PASSWORD       Postgres superuser password (first start only)
+#   TREANT_LOGIN_PASSWORD   password of the treant_login role that bootstrap creates
+# Optional, for distillation and the gate (see README.md, "Models"):
+#   TREANT_LITELLM_URL, TREANT_LITELLM_KEY_<WORKSPACE>, TREANT_JEV_API_KEY
+
+name: treant-quickstart
+
+x-treant-env: &treant-env
+  TREANT_DATABASE_URL: postgresql://treant_login:${TREANT_LOGIN_PASSWORD:?set TREANT_LOGIN_PASSWORD in .env}@postgres:5432/treant
+  TREANT_EMBED_URL: http://embed:8080
+  TREANT_EMBED_MODEL: embeddinggemma-300m
+  TREANT_EMBED_DIMS: "768"
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.6-pg17-bookworm
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: treant
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d treant"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  embed:
+    # llama.cpp server (build b12110), serving an OpenAI-compatible /v1/embeddings with
+    # EmbeddingGemma 300M (768 dimensions, matching TREANT_EMBED_DIMS). The model (about
+    # 330 MB) is downloaded from Hugging Face on first start into the `models` volume.
+    image: ghcr.io/ggml-org/llama.cpp:server-b12110@sha256:1145e8de3111dc9358c6d8daffb755c4cf8a862d93391c26ba521b9a810bbe3e
+    command:
+      - "-hf"
+      - "ggml-org/embeddinggemma-300M-GGUF:Q8_0"
+      - "--embeddings"
+      - "--pooling"
+      - "mean"
+      - "-c"
+      - "2048"
+      - "-b"
+      - "2048"
+      - "-ub"
+      - "2048"
+    environment:
+      LLAMA_CACHE: /models
+    volumes:
+      - models:/models
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 120
+    restart: unless-stopped
+
+  treant:
+    # The MCP server: streamable HTTP at /mcp, health at /healthz.
+    build: .
+    image: treant:local
+    command: ["serve"]
+    environment:
+      <<: *treant-env
+      TREANT_BIND: 0.0.0.0:8000
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embed:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    # Job stages: embed, distill, apply, gate. The only service that calls models.
+    image: treant:local
+    command: ["worker"]
+    healthcheck:
+      disable: true  # the image's check probes the server port; the worker has none
+    environment:
+      <<: *treant-env
+      TREANT_LITELLM_URL: ${TREANT_LITELLM_URL:-}
+      TREANT_LITELLM_KEY_PERSONAL: ${TREANT_LITELLM_KEY_PERSONAL:-}
+      TREANT_JEV_API_KEY: ${TREANT_JEV_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      embed:
+        condition: service_healthy
+      treant:
+        condition: service_started
+    restart: unless-stopped
+
+  admin:
+    # One-shot owner CLI: docker compose run --rm admin <command>. The only service that gets
+    # the superuser DSN and the login password.
+    image: treant:local
+    profiles: [admin]
+    healthcheck:
+      disable: true
+    environment:
+      <<: *treant-env
+      TREANT_ADMIN_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/treant
+      TREANT_LOGIN_PASSWORD: ${TREANT_LOGIN_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  models:

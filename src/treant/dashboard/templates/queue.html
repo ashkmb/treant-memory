@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, pager, empty %}
+{% block title %}Review queue{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="page-title">Review queue</h1>
+  <form method="get" action="/queue" class="filters flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <label class="select select-sm w-full sm:w-56"><span class="label">Status</span>
+      <select name="status">
+        <option value="all"{% if status == "all" %} selected{% endif %}>all</option>
+        {% for s in statuses %}<option value="{{ s }}"{% if s == status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="input input-sm w-full sm:w-56"><span class="label">Workspace</span><input name="ws" value="{{ ws }}" maxlength="100"></label>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  </form>
+</div>
+{% if notice %}<p role="alert" class="notice alert alert-warning alert-soft">{{ notice }}</p>{% endif %}
+<form method="post" action="/queue/bulk" class="card bg-base-100 shadow-sm">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
+      <thead><tr><th></th><th>#</th><th>Workspace</th><th>Status</th><th>Kind</th><th>Text</th><th>Flags</th><th>Similar</th><th>Created</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr class="hover:bg-base-200">
+          <td>{% if r.status in open %}<input type="checkbox" class="checkbox checkbox-sm" name="ids" value="{{ r.id }}" aria-label="select {{ r.id }}">{% endif %}</td>
+          <td><a href="/queue/{{ r.id }}">{{ r.id }}</a></td>
+          <td>{{ r.workspace }}</td><td>{{ badge(r.status) }}</td>
+          <td class="whitespace-nowrap">{{ r.kind }}{% if r.type %} <span class="opacity-60">/ {{ r.type }}</span>{% endif %}</td>
+          <td class="min-w-64">{{ r.text | short }}</td>
+          <td>{% for c in r.categories %}<span class="badge badge-sm badge-outline badge-warning mr-1">{{ c }}</span>{% endfor %}</td>
+          <td class="whitespace-nowrap">{% if r.similar_to %}<a href="/queue/{{ r.similar_to }}">similar to #{{ r.similar_to }}</a>{% endif %}</td>
+          <td class="whitespace-nowrap text-xs opacity-70">{{ r.created_at | when }}</td>
+        </tr>
+      {% else %}
+        {{ empty(9, "Nothing here.") }}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="flex flex-wrap items-center gap-2 border-t border-base-300 p-4">
+    <button type="submit" name="op" value="approve" class="btn btn-sm btn-primary">Approve selected</button>
+    <button type="submit" name="op" value="drop" class="btn btn-sm btn-error btn-outline">Drop selected</button>
+  </div>
+</form>
+{{ pager(
+  ("/queue?status=" ~ (status | urlencode) ~ "&ws=" ~ (ws | urlencode) ~ "&offset=" ~ prev) if prev is not none else "",
+  ("/queue?status=" ~ (status | urlencode) ~ "&ws=" ~ (ws | urlencode) ~ "&offset=" ~ next) if next is not none else "",
+) }}
+{% endblock %}

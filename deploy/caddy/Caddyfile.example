@@ -1,0 +1,33 @@
+# Caddy in front of Treant. Both apps listen on host loopback only (compose.prod.yml);
+# Caddy terminates TLS and passes the original Host header through, which both apps check:
+#   MCP server  Host must be in TREANT_ALLOWED_HOSTS
+#   dashboard   Host must be the host of TREANT_DASHBOARD_URL
+#
+# Names that only resolve inside your network cannot get a certificate through the HTTP
+# challenge; use Caddy's DNS challenge (a DNS provider module) or your internal CA.
+#
+# `private_ranges` admits loopback and RFC 1918 / ULA client addresses only. Behind another
+# proxy or a tunnel, configure trusted_proxies and match on client_ip instead.
+
+treant.example.com {
+	route {
+		@outside not remote_ip private_ranges
+		respond @outside 403
+
+		# MCP streamable HTTP: POST, GET (event stream) and DELETE on /mcp. No trailing slash.
+		reverse_proxy /mcp 127.0.0.1:8000 {
+			flush_interval -1
+		}
+		# Liveness, no token needed.
+		reverse_proxy /healthz 127.0.0.1:8000
+		respond 404
+	}
+}
+
+treant-admin.example.com {
+	route {
+		@outside not remote_ip private_ranges
+		respond @outside 403
+		reverse_proxy 127.0.0.1:8001
+	}
+}

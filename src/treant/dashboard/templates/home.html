@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_ui.html" import icon, status, empty %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<h1 class="page-title">Overview</h1>
+<div class="stats stats-vertical w-full bg-base-100 shadow-sm sm:stats-horizontal">
+  {% for href, label, value, ic, tone in [
+    ("/queue", "Open queue items", totals.queue_open, "inbox-stack", "text-primary"),
+    ("/quarantine", "Quarantined saves", totals.quarantined, "shield-exclamation", "text-warning"),
+    ("/jobs", "Dead jobs", totals.jobs_dead, "queue-list", "text-error"),
+    ("/tokens", "Active tokens", totals.tokens_active, "key", "text-success"),
+  ] %}
+  <a href="{{ href }}" class="stat link-plain hover:bg-base-200">
+    <div class="stat-figure {{ tone }}">{{ icon(ic, "size-8") }}</div>
+    <div class="stat-title">{{ label }}</div>
+    <div class="stat-value">{{ value }}</div>
+  </a>
+  {% endfor %}
+</div>
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body p-0">
+    <h2 class="card-title px-6 pt-5">Workspaces</h2>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead>
+          <tr><th>Workspace</th><th>Status</th><th>Queue</th><th>Quarantined</th><th>Dead jobs</th><th>Tokens</th></tr>
+        </thead>
+        <tbody>
+        {% for w in workspaces %}
+          <tr class="hover:bg-base-200">
+            <td class="font-medium"><a href="/workspaces/{{ w.name }}">{{ w.name }}</a></td>
+            <td>{{ status(w.status) }}</td>
+            <td>{{ w.queue_open }}</td>
+            <td>{{ w.quarantined }}</td>
+            <td>{% if w.jobs_dead %}<span class="font-semibold text-error">{{ w.jobs_dead }}</span>{% else %}0{% endif %}</td>
+            <td>{{ w.tokens_active }}</td>
+          </tr>
+        {% else %}
+          {{ empty(6, "No workspaces yet.") }}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge %}
+{% block title %}Queue #{{ item.id }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/queue">Queue</a></li><li>#{{ item.id }}</li></ul></div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="page-title">Queue item #{{ item.id }}</h1>
+  {{ badge(item.status) }}
+</div>
+<p class="meta text-sm opacity-70">{{ item.workspace }} · {{ item.kind }}{% if item.type %} / {{ item.type }}{% endif %} · created {{ item.created_at | when }}{% if item.decided_at %} · decided {{ item.decided_at | when }}{% endif %}</p>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    {% if item.kind == "concept" %}
+    <p class="meta text-sm opacity-70">Name, aliases and type, as checked:</p>
+    {% endif %}
+    <p class="text-block text-base leading-relaxed">{% for part, flagged in parts %}{% if flagged %}<mark>{{ part }}</mark>{% else %}{{ part }}{% endif %}{% endfor %}</p>
+    {% if findings %}
+    <h2 class="font-semibold mt-2">Rule findings</h2>
+    <ul class="flex flex-wrap gap-2">
+      {% for f in findings %}<li class="badge badge-warning badge-soft">{{ f.category }} (characters {{ f.start }} to {{ f.end }})</li>{% endfor %}
+    </ul>
+    {% elif is_open %}
+    <p class="meta text-sm text-success">The rules found nothing in this text.</p>
+    {% endif %}
+    {% if item.reasons %}
+    <p class="meta text-sm opacity-70">Held for: {% for r in item.reasons %}{{ r.category }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="font-semibold">What approving does</h2>
+    {% if item.kind == "concept" %}
+    <p>Adds a shared topic named {{ item.name }}; general facts can attach to it and each workspace's notes can link to it.</p>
+    {% if waiting is not none %}
+    <p class="meta text-sm opacity-70">{% if waiting == 0 %}No facts in {{ item.workspace }} are waiting on this concept.{% else %}{{ waiting }} fact{{ "" if waiting == 1 else "s" }} in {{ item.workspace }} {{ "is" if waiting == 1 else "are" }} waiting on this concept.{% endif %}</p>
+    {% endif %}
+    <p class="text-sm"><span class="font-semibold">Approve</span> when it is a public thing anyone could know: a tool, product, library or principle, such as kubectl, Postgres or least privilege.</p>
+    <p class="text-sm"><span class="font-semibold">Drop</span> when it is your own name for something: a host, repo, project, person or client.</p>
+    {% else %}
+    <p>Shares this sentence with every workspace.</p>
+    <p class="text-sm"><span class="font-semibold">Approve</span> when it would help in any workspace and reveals nothing about where it came from.</p>
+    <p class="text-sm"><span class="font-semibold">Drop</span> when it mentions the setup (IPs, paths, hostnames, account names), is only true for this environment, is vague, or duplicates something already published.</p>
+    {% endif %}
+    <p class="meta text-sm opacity-70">When unsure, drop: the workspace keeps its own copy.</p>
+  </div>
+</div>
+
+{% if item.source_text %}
+<div class="collapse collapse-arrow bg-base-100 shadow-sm">
+  <input type="checkbox" aria-label="show source">
+  <div class="collapse-title font-semibold">Source</div>
+  <div class="collapse-content"><p class="text-block text-sm">{{ item.source_text }}</p></div>
+</div>
+{% endif %}
+
+{% if is_open %}
+<div class="grid gap-6 lg:grid-cols-3">
+  <form class="card bg-base-100 shadow-sm lg:col-span-2" method="post" action="/queue/{{ item.id }}/approve">
+    <div class="card-body">
+      <h2 class="card-title">Approve</h2>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      {% if item.kind != "concept" %}
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Text (edit before publishing if needed)</legend>
+        <textarea name="text" rows="6" maxlength="{{ max_text }}" class="textarea w-full">{{ item.text }}</textarea>
+      </fieldset>
+      {% endif %}
+      {% if findings %}
+      <label class="label"><input type="checkbox" name="force" value="1" class="checkbox checkbox-sm checkbox-warning"> Publish anyway (the rules matched)</label>
+      {% elif item.kind != "concept" %}
+      <p class="meta text-sm opacity-70">If you edit the text and the rules match it, you will be asked to confirm.</p>
+      {% endif %}
+      <div class="card-actions"><button type="submit" class="btn btn-primary">Approve and publish</button></div>
+    </div>
+  </form>
+  <form class="card bg-base-100 shadow-sm" method="post" action="/queue/{{ item.id }}/drop">
+    <div class="card-body">
+      <h2 class="card-title">Drop</h2>
+      <p class="text-sm opacity-70">Discard this item; it is not published.</p>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="card-actions"><button type="submit" class="btn btn-error btn-outline">Drop</button></div>
+    </div>
+  </form>
+</div>
+{% endif %}
+<p><a href="/queue">Back to the queue</a></p>
+{% endblock %}

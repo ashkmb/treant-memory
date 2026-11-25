@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Duplicates {{ ns }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li><a href="/memory/{{ ns | urlencode }}">{{ ns }}</a></li><li>Duplicates</li></ul></div>
+<h1 class="page-title">Fact duplicates: {{ ns }}</h1>
+<p class="text-sm opacity-70">Current facts of the same type whose meaning is nearly the same. Pick the wording to keep (optionally edit it); the others are superseded and their history stays.</p>
+{% if hidden %}<p class="text-sm opacity-70">{{ hidden }} group{{ "s" if hidden != 1 }} hidden for this session.</p>{% endif %}
+<div class="space-y-4">
+{% for g in groups %}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body space-y-2">
+      <h2 class="card-title text-base">{{ g.facts | length }} × {{ g.type }}</h2>
+      <form method="post" action="/memory/{{ ns | urlencode }}/duplicates/merge" class="space-y-2">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        {% for f in g.facts %}
+        <input type="hidden" name="ids" value="{{ f.id }}">
+        <label class="flex gap-3">
+          <span class="mt-1"><input type="radio" name="keep" value="{{ f.id }}"{% if loop.first %} checked{% endif %}></span>
+          <span class="space-y-2">
+            <span class="text-block">{{ f.text }}</span>
+            <span class="block text-xs opacity-70">{{ f.created_at | when }}{% if f.node_name %} · {{ f.node_name | short }}{% endif %} · <a href="/memory/{{ ns | urlencode }}/fact/{{ f.id | urlencode }}/history">history</a></span>
+          </span>
+        </label>
+        {% endfor %}
+        <textarea name="text" rows="2" class="textarea w-full" placeholder="optional: new wording for the kept fact"></textarea>
+        <button type="submit" class="btn btn-sm btn-primary">Merge</button>
+      </form>
+      <form method="post" action="/memory/{{ ns | urlencode }}/duplicates/dismiss">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="key" value="{{ g.key }}">
+        <button type="submit" class="btn btn-sm">Not duplicates</button>
+      </form>
+    </div>
+  </div>
+{% else %}
+  <p class="opacity-70">No duplicates found.</p>
+{% endfor %}
+</div>
+{% endblock %}

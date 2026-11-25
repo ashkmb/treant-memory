@@ -1,0 +1,5 @@
+# Gate criteria: the questions both judges answer and Jev's pass threshold.
+# question is asked of facts; concept_question of concepts (name, aliases and type).
+question = "Is this free of anything specific to an employer, project, customer or person?"
+concept_question = "Is this the name of a widely known, generic technology, tool or idea, not something named or built inside one organisation, project or team?"
+jev_threshold = 0.8

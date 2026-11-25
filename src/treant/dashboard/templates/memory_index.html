@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge %}
+{% block title %}Memory{% endblock %}
+{% block content %}
+<h1 class="page-title">Memory</h1>
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title"><a href="/memory/general">general</a> <span class="badge badge-sm badge-info badge-soft">shared</span></h2>
+      <div class="card-actions mt-2">
+        <a class="btn btn-sm" href="/memory/general">nodes</a>
+        <a class="btn btn-sm" href="/memory/general/graph">graph</a>
+        <a class="btn btn-sm" href="/memory/general/search">search</a>
+        <a class="btn btn-sm btn-ghost" href="/memory/general/duplicates">duplicates</a>
+      </div>
+    </div>
+  </div>
+  {% for w in workspaces %}
+  <div class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title"><a href="/memory/{{ w.name | urlencode }}">{{ w.name }}</a> {{ badge(w.status) }}</h2>
+      <div class="card-actions mt-2">
+        <a class="btn btn-sm" href="/memory/{{ w.name | urlencode }}">nodes</a>
+        <a class="btn btn-sm" href="/memory/{{ w.name | urlencode }}/graph">graph</a>
+        <a class="btn btn-sm" href="/memory/{{ w.name | urlencode }}/search">search</a>
+        <a class="btn btn-sm btn-ghost" href="/memory/{{ w.name | urlencode }}/duplicates">duplicates</a>
+        <a class="btn btn-sm btn-ghost" href="/memory/{{ w.name | urlencode }}/merges">merges</a>
+        <a class="btn btn-sm btn-ghost" href="/memory/{{ w.name | urlencode }}/conflicts">conflicts</a>
+        <a class="btn btn-sm btn-ghost" href="/memory/{{ w.name | urlencode }}/sessions">sessions</a>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

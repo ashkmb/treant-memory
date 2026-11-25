@@ -1,0 +1,19 @@
+# /etc/systemd/system/treant-isolation.service
+# Live workspace isolation test (deploy/scripts/isolation.sh). Started by
+# treant-isolation.timer. Exit 1 means a workspace could reach another's canary: treat it
+# as an incident.
+[Unit]
+Description=Treant live workspace isolation test
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+Environment=COMPOSE_FILE=/opt/treant/deploy/compose.prod.yml
+ExecStart=/opt/treant/deploy/scripts/isolation.sh
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

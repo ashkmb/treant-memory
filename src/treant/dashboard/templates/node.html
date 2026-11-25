@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_fact_form.html" import edit_form %}
+{% from "_ui.html" import status as badge %}
+{% block title %}{{ node.name | short(60) }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li><a href="/memory/{{ ns | urlencode }}">{{ ns }}</a></li><li>{{ node.name | short(60) }}</li></ul></div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="page-title break-all">{{ node.name }}</h1>
+  {{ badge(node.status) }}
+  {% if node.status == "current" %}<a class="btn btn-sm ml-auto" href="/memory/{{ ns | urlencode }}/graph?focus={{ node.id | urlencode }}">graph around this node</a>{% endif %}
+</div>
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <dl class="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
+      <dt class="opacity-60">Kind / type</dt><dd>{{ node.kind }} / {{ node.type }}</dd>
+      <dt class="opacity-60">Status</dt><dd>{{ node.status }}</dd>
+      <dt class="opacity-60">Aliases</dt><dd>{% for a in node.aliases %}<span class="badge badge-sm badge-ghost mr-1">{{ a }}</span>{% endfor %}</dd>
+      <dt class="opacity-60">Confidence</dt><dd>{{ node.confidence }}</dd>
+      <dt class="opacity-60">Created</dt><dd>{{ node.created_at | when }}</dd>
+    </dl>
+  </div>
+</div>
+
+<div class="grid gap-6 lg:grid-cols-3">
+<div class="space-y-4 lg:col-span-2">
+<h2 class="section-title">Facts</h2>
+{% for f in node.facts %}
+<section class="fact card bg-base-100 shadow-sm">
+  <div class="card-body gap-2 p-4">
+    <p class="meta flex flex-wrap items-center gap-2 text-sm">
+      <span class="badge badge-sm badge-ghost">{{ f.type }}</span> {{ badge(f.status) }}
+      <span class="opacity-60">v{{ f.version }} · {{ f.created_at | when }}</span>
+    </p>
+    <p class="text-block">{{ f.text }}</p>
+    <div class="flex flex-wrap items-center gap-2">
+      <a class="btn btn-xs btn-ghost" href="/memory/{{ ns | urlencode }}/fact/{{ f.id | urlencode }}/history">history</a>
+      {% if f.status != "retracted" %}
+      <form class="inline" method="post" action="/memory/{{ ns | urlencode }}/fact/{{ f.id | urlencode }}/retract">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit" class="btn btn-xs btn-ghost text-error">Retract</button>
+      </form>
+      {% endif %}
+    </div>
+    <details class="collapse collapse-arrow bg-base-200"><summary class="collapse-title py-2 text-sm font-medium">Edit</summary>
+      <div class="collapse-content">{{ edit_form(ns, f.id, f.text, f.status, f.type, csrf) }}</div></details>
+  </div>
+</section>
+{% else %}
+<p class="opacity-60">No facts.</p>
+{% endfor %}
+</div>
+
+<div class="space-y-4">
+<h2 class="section-title">Edges</h2>
+<ul class="list rounded-box bg-base-100 shadow-sm">
+{% for e in node.edges %}
+  <li class="list-row text-sm">{{ e.direction }} {{ e.type }} ({{ e.status }}):
+    <a href="/memory/{{ ns | urlencode }}/node/{{ e.other_id | urlencode }}">{{ e.other_name }}</a></li>
+{% else %}
+  <li class="list-row text-sm opacity-60">No edges.</li>
+{% endfor %}
+</ul>
+
+{% if node.journal %}
+<h2 class="section-title">Journal</h2>
+{% for j in node.journal %}
+<section class="fact card bg-base-100 shadow-sm">
+  <div class="card-body gap-1 p-4">
+    <p class="meta text-xs opacity-60">{{ j.created_at | when }}</p>
+    <p class="text-block text-sm">{{ j.text }}</p>
+  </div>
+</section>
+{% endfor %}
+{% endif %}
+</div>
+</div>
+{% endblock %}

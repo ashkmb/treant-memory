@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, empty %}
+{% block title %}Workspace {{ ws.name }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/workspaces">Workspaces</a></li><li>{{ ws.name }}</li></ul></div>
+<div class="flex flex-wrap items-center gap-3">
+  <h1 class="page-title">{{ ws.name }}</h1>
+  {{ badge(ws.status) }}
+</div>
+<p class="meta text-sm opacity-70">Status: {{ ws.status }} · created {{ ws.created_at | when }} · {{ ws.tokens_active }} active token(s) ·
+  <a href="/queue?ws={{ ws.name | urlencode }}">queue</a></p>
+{% if not active %}
+<p role="alert" class="alert alert-warning alert-soft">This workspace is archived and read-only.</p>
+{% endif %}
+{% if invalid_settings %}
+<p role="alert" class="alert alert-error alert-soft">The stored settings are invalid. Tick "reset to defaults" to repair them.</p>
+{% endif %}
+
+<div class="grid gap-6 xl:grid-cols-2">
+<section class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Settings</h2>
+    {% if active %}
+    <form method="post" action="/workspaces/{{ ws.name }}/settings" class="grid gap-x-4 sm:grid-cols-2">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="fieldset"><legend class="fieldset-legend">Backend</legend>
+        <select name="backend" class="select w-full">{% for b in backends %}<option value="{{ b }}"{% if b == s.backend %} selected{% endif %}>{{ b }}</option>{% endfor %}</select>
+      </fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Publish</legend>
+        <select name="publish" class="select w-full">{% for m in modes %}<option value="{{ m }}"{% if m == s.publish %} selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+      </fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Alias</legend>
+        <input name="alias" value="{{ s.alias }}" maxlength="100" class="input w-full"></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Judge alias</legend>
+        <input name="judge_alias" value="{{ s.judge_alias }}" maxlength="100" class="input w-full"></fieldset>
+      <fieldset class="fieldset sm:col-span-2"><legend class="fieldset-legend">Domains (one per line)</legend>
+        <textarea name="domains" rows="4" class="textarea w-full font-mono text-sm">{{ s.rules.domains | join("\n") }}</textarea></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Ticket prefixes (one per line)</legend>
+        <textarea name="ticket_prefixes" rows="4" class="textarea w-full font-mono text-sm">{{ s.rules.ticket_prefixes | join("\n") }}</textarea></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Terms (one per line, at least 3 characters)</legend>
+        <textarea name="terms" rows="4" class="textarea w-full font-mono text-sm">{{ s.rules.terms | join("\n") }}</textarea></fieldset>
+      <label class="label sm:col-span-2 mt-2"><input type="checkbox" name="reset" value="1" class="checkbox checkbox-sm"> Reset to defaults (ignores the fields above)</label>
+      <div class="sm:col-span-2 mt-4"><button type="submit" class="btn btn-primary">Save settings</button></div>
+    </form>
+    {% else %}
+<pre class="text-block rounded-box bg-base-200 p-4 text-sm">backend: {{ s.backend }}
+alias: {{ s.alias }}
+judge alias: {{ s.judge_alias }}
+publish: {{ s.publish }}
+domains: {{ s.rules.domains | join(", ") }}
+ticket prefixes: {{ s.rules.ticket_prefixes | join(", ") }}
+terms: {{ s.rules.terms | length }}</pre>
+    {% endif %}
+  </div>
+</section>
+
+<div class="space-y-6">
+<section class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Targets</h2>
+    <div class="overflow-x-auto">
+      <table class="table table-sm">
+        <thead><tr><th>Kind</th><th>Value</th><th></th></tr></thead>
+        <tbody>
+        {% for t in targets %}
+          <tr>
+            <td><span class="badge badge-sm badge-ghost">{{ t.kind }}</span></td><td class="font-mono text-sm">{{ t.value }}</td>
+            <td class="text-right">{% if active %}
+              <form method="post" action="/workspaces/{{ ws.name }}/targets/remove" class="inline">
+                <input type="hidden" name="csrf" value="{{ csrf }}">
+                <input type="hidden" name="kind" value="{{ t.kind }}">
+                <input type="hidden" name="value" value="{{ t.value }}">
+                <button type="submit" class="btn btn-xs btn-ghost text-error">Remove</button>
+              </form>{% endif %}</td>
+          </tr>
+        {% else %}
+          {{ empty(3, "No targets.") }}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if active %}
+    <form method="post" action="/workspaces/{{ ws.name }}/targets/add" class="filters mt-2 flex flex-wrap items-center gap-2">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="select select-sm w-full sm:w-56"><span class="label">Kind</span><select name="kind">{% for k in kinds %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select></label>
+      <label class="input input-sm w-full sm:w-auto sm:grow"><span class="label">Value</span><input name="value" maxlength="500" required></label>
+      <button type="submit" class="btn btn-sm btn-primary">Add target</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+<section class="card border border-error/30 bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title text-error">Archive</h2>
+    {% if active %}
+    <form method="post" action="/workspaces/{{ ws.name }}/archive" class="filters flex w-full flex-wrap items-center gap-2 sm:w-auto">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="input input-sm w-full sm:w-auto sm:grow"><span class="label">Type <strong>{{ ws.name }}</strong> to confirm</span><input name="confirm" autocomplete="off" required></label>
+      <button type="submit" class="btn btn-sm btn-error">Archive workspace</button>
+    </form>
+    <p class="meta text-sm opacity-70">Archiving revokes all of its active tokens.</p>
+    {% else %}
+    <p>Already archived.</p>
+    {% endif %}
+    <h2 class="card-title mt-4 text-error">Purge</h2>
+    <p class="text-sm">Purging is done on the server only:</p>
+    <pre class="rounded-box bg-base-200 p-3 text-sm overflow-x-auto">sudo treant workspace purge {{ ws.name }} --confirm {{ ws.name }}</pre>
+  </div>
+</section>
+</div>
+</div>
+{% endblock %}

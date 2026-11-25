@@ -1,0 +1,11 @@
+# /etc/systemd/system/treant-backup.timer
+[Unit]
+Description=Nightly Treant backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

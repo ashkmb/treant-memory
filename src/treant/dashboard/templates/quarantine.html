@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Quarantine{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="page-title">Quarantined saves</h1>
+  <form method="get" action="/quarantine" class="filters flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <label class="input input-sm w-full sm:w-56"><span class="label">Workspace</span><input name="ws" value="{{ ws }}" maxlength="100"></label>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  </form>
+</div>
+{% if notice %}<p role="alert" class="notice alert alert-warning alert-soft">{{ notice }}</p>{% endif %}
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table">
+    <thead><tr><th>Workspace</th><th>Revision</th><th>Created</th><th>Removed</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="hover:bg-base-200">
+        <td>{{ r.workspace }}</td>
+        <td class="font-mono text-xs"><a href="/quarantine/{{ r.workspace | urlencode }}/{{ r.revision_id | urlencode }}">{{ r.revision_id }}</a></td>
+        <td class="whitespace-nowrap text-xs opacity-70">{{ r.created_at | when }}</td><td>{{ r.removed }}</td>
+      </tr>
+    {% else %}
+      {{ empty(4, "No quarantined saves.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="meta text-sm opacity-70">Opening one shows the held text and needs a recent login.</p>
+{% endblock %}

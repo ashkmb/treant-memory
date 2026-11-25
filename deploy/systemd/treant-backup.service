@@ -1,0 +1,25 @@
+# /etc/systemd/system/treant-backup.service
+# Nightly per-schema backup (deploy/scripts/backup.sh). Started by treant-backup.timer.
+[Unit]
+Description=Treant backup (per-schema pg_dump to restic)
+Requires=docker.service
+After=network-online.target docker.service
+Wants=network-online.target
+# If BACKUP_REPO_BASE is on a mounted disk or share, uncomment and set its mount point:
+#RequiresMountsFor=/srv/backups
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/treant/backup.env
+Environment=COMPOSE_FILE=/opt/treant/deploy/compose.prod.yml
+Environment=RESTIC_CACHE_DIR=/var/cache/treant-backup
+CacheDirectory=treant-backup
+CacheDirectoryMode=0700
+ExecStart=/opt/treant/deploy/scripts/backup.sh
+# The lock wait alone can take an hour; a hung restic call must not block forever.
+TimeoutStartSec=3h
+Nice=10
+IOSchedulingClass=idle
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true

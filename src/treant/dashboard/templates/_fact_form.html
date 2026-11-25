@@ -1,0 +1,21 @@
+{% macro edit_form(ns, fact_id, text, status, type, csrf) %}
+<form method="post" action="/memory/{{ ns | urlencode }}/fact/{{ fact_id | urlencode }}/edit" class="factform space-y-2">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <textarea name="text" rows="4" required class="textarea w-full">{{ text }}</textarea>
+  <div class="flex flex-wrap items-center gap-3">
+    <label class="select select-sm w-full sm:w-56"><span class="label">status</span>
+      <select name="status">
+        {% for s in ["current", "closed", "superseded", "retracted"] %}
+        {% if s != "closed" or type == "open_thread" or status == "closed" %}
+        <option value="{{ s }}"{% if s == status %} selected{% endif %}>{{ s }}</option>
+        {% endif %}
+        {% endfor %}
+      </select>
+    </label>
+    {% if ns == "general" %}
+    <label class="label text-sm"><input type="checkbox" name="force" value="1" class="checkbox checkbox-sm checkbox-warning"> publish even if the rules flag it</label>
+    {% endif %}
+    <button type="submit" class="btn btn-sm btn-primary">Save</button>
+  </div>
+</form>
+{% endmacro %}

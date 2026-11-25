@@ -1,0 +1,37 @@
+[project]
+name = "treant-client"
+version = "0.1.0"
+description = "Claude Code and Kiro adapters for the Treant memory server"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { file = "LICENSE" }
+dependencies = ["treant-guard"]
+
+[tool.uv.sources]
+treant-guard = { path = "../guard" }
+
+[project.urls]
+Homepage = "https://github.com/ashkmb/treant-memory"
+Repository = "https://github.com/ashkmb/treant-memory"
+
+[project.scripts]
+treant-client = "treant_client.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/treant_client"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

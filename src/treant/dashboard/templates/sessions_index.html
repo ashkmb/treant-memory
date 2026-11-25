@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, empty %}
+{% block title %}Sessions{% endblock %}
+{% block content %}
+<h1 class="page-title">Sessions</h1>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table">
+    <thead><tr><th>Workspace</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for w in workspaces %}
+      <tr class="hover:bg-base-200">
+        <td class="font-medium">{{ w.name }}</td><td>{{ badge(w.status) }}</td>
+        <td class="text-right"><a class="btn btn-xs" href="/memory/{{ w.name | urlencode }}/sessions">sessions</a></td>
+      </tr>
+    {% else %}
+      {{ empty(3, "No workspaces.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

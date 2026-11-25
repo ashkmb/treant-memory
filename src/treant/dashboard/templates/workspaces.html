@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, empty %}
+{% block title %}Workspaces{% endblock %}
+{% block content %}
+<h1 class="page-title">Workspaces</h1>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table">
+    <thead><tr><th>Workspace</th><th>Status</th><th>Publish</th><th>Backend</th><th>Queue</th><th>Quarantined</th><th>Dead jobs</th><th>Tokens</th><th>Created</th></tr></thead>
+    <tbody>
+    {% for w in workspaces %}
+      <tr class="hover:bg-base-200">
+        <td class="font-medium"><a href="/workspaces/{{ w.name }}">{{ w.name }}</a></td>
+        <td>{{ badge(w.status) }}</td>
+        <td>{% if w.settings %}<span class="badge badge-sm badge-outline">{{ w.settings.publish }}</span>{% else %}<span class="text-error">invalid settings</span>{% endif %}</td>
+        <td>{% if w.settings %}{{ w.settings.backend }}{% endif %}</td>
+        <td>{{ w.queue_open }}</td><td>{{ w.quarantined }}</td>
+        <td>{% if w.jobs_dead %}<span class="font-semibold text-error">{{ w.jobs_dead }}</span>{% else %}0{% endif %}</td>
+        <td>{{ w.tokens_active }}</td><td class="whitespace-nowrap text-xs opacity-70">{{ w.created_at | when }}</td>
+      </tr>
+    {% else %}
+      {{ empty(9, "No workspaces yet.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+<div class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Create a workspace</h2>
+    <p class="text-sm">Creating and purging workspaces is done on the server only:</p>
+    <pre class="rounded-box bg-base-200 p-3 text-sm">sudo treant workspace create &lt;name&gt;</pre>
+  </div>
+</div>
+{% endblock %}

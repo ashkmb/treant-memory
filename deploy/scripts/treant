@@ -1,0 +1,11 @@
+#!/bin/sh
+# Treant owner CLI on the host (root only): runs the one-shot `admin` service, the only
+# container that holds the superuser DSN. Install: install -m 0750 treant /usr/local/sbin/treant
+# Example: sudo treant workspace list
+#
+# `docker compose run -T` reads the caller's stdin. In a script, give every call that does
+# not need stdin a `</dev/null`, or the first call swallows the rest of a heredoc or loop.
+set -eu
+: "${COMPOSE_FILE:=/opt/treant/deploy/compose.prod.yml}"
+export COMPOSE_FILE
+exec docker compose --profile admin run --rm -T admin "$@"

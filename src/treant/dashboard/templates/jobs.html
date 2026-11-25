@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, pager, empty %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="page-title">Jobs</h1>
+  <form method="get" action="/jobs" class="filters flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <label class="select select-sm w-full sm:w-56"><span class="label">Status</span>
+      <select name="status">
+        <option value="all"{% if status == "all" %} selected{% endif %}>all</option>
+        {% for s in statuses %}<option value="{{ s }}"{% if s == status %} selected{% endif %}>{{ s }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="input input-sm w-full sm:w-56"><span class="label">Workspace</span><input name="ws" value="{{ ws }}" maxlength="100"></label>
+    <label class="input input-sm w-full sm:w-56"><span class="label">Kind</span><input name="kind" value="{{ kind }}" maxlength="100"></label>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  </form>
+</div>
+{% if notice %}<p role="alert" class="notice alert alert-warning alert-soft">{{ notice }}</p>{% endif %}
+<div class="card bg-base-100 shadow-sm">
+  <div class="overflow-x-auto">
+    <table class="table table-sm">
+      <thead><tr><th>#</th><th>Workspace</th><th>Kind</th><th>Key</th><th>Status</th><th>Attempts</th><th>Error</th><th>Run after</th><th></th></tr></thead>
+      <tbody>
+      {% for j in rows %}
+        <tr class="hover:bg-base-200">
+          <td class="opacity-60">{{ j.id }}</td><td>{{ j.workspace }}</td><td>{{ j.kind }}</td>
+          <td class="font-mono text-xs">{{ j.key | short(60) }}</td>
+          <td>{{ badge(j.status) }}</td><td>{{ j.attempts }}</td>
+          <td>{% if j.error_category %}<span class="text-error">{{ j.error_category }}</span>{% endif %}</td>
+          <td class="whitespace-nowrap text-xs opacity-70">{{ j.run_after | when }}</td>
+          <td>{% if j.status == "dead" %}
+            <form class="inline" method="post" action="/jobs/{{ j.id }}/retry">
+              <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-xs">Retry</button>
+            </form>{% endif %}</td>
+        </tr>
+      {% else %}
+        {{ empty(9, "No jobs.") }}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/jobs/retry-dead" class="border-t border-base-300 p-4">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="ws" value="{{ ws }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <button type="submit" class="btn btn-sm btn-primary">Retry all dead{% if ws or kind %} (this filter){% endif %}</button>
+  </form>
+</div>
+{{ pager(
+  ("/jobs?status=" ~ (status | urlencode) ~ "&ws=" ~ (ws | urlencode) ~ "&kind=" ~ (kind | urlencode) ~ "&offset=" ~ prev) if prev is not none else "",
+  ("/jobs?status=" ~ (status | urlencode) ~ "&ws=" ~ (ws | urlencode) ~ "&kind=" ~ (kind | urlencode) ~ "&offset=" ~ next) if next is not none else "",
+) }}
+{% endblock %}

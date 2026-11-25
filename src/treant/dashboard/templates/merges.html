@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Merges {{ ws }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li><a href="/memory/{{ ws | urlencode }}">{{ ws }}</a></li><li>Merges</li></ul></div>
+<h1 class="page-title">Merge flags: {{ ws }}</h1>
+<p class="text-sm opacity-70">Merging folds the second node into the first.</p>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table">
+    <thead><tr><th>Keep</th><th>Fold in</th><th>Score</th><th>Flagged</th><th></th></tr></thead>
+    <tbody>
+    {% for m in rows %}
+      <tr>
+        <td>{% if m.node_a %}<a href="/memory/{{ ws | urlencode }}/node/{{ m.node_a | urlencode }}">{{ m.name_a }}</a>{% endif %}</td>
+        <td>{% if m.node_b %}<a href="/memory/{{ ws | urlencode }}/node/{{ m.node_b | urlencode }}">{{ m.name_b }}</a>{% endif %}</td>
+        <td><span class="badge badge-sm badge-ghost">{{ m.score }}</span></td>
+        <td class="whitespace-nowrap text-xs opacity-70">{{ m.created_at | when }}</td>
+        <td class="whitespace-nowrap text-right">
+          <form class="inline" method="post" action="/memory/{{ ws | urlencode }}/merges/{{ m.id }}/merge">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-xs btn-primary">Merge</button>
+          </form>
+          <form class="inline" method="post" action="/memory/{{ ws | urlencode }}/merges/{{ m.id }}/dismiss">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-xs">Dismiss</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      {{ empty(5, "No open merge flags.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

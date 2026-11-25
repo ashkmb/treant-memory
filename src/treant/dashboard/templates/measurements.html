@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Measurements{% endblock %}
+{% block content %}
+<h1 class="page-title">Measurements</h1>
+<p class="text-sm opacity-70">Client token usage per session is not collected yet.</p>
+
+<div class="grid gap-6 md:grid-cols-2">
+  <section class="card bg-base-100 shadow-sm {{ 'border border-error/40' if (not isolation or isolation_bad) else '' }}">
+    <div class="card-body">
+      <h2 class="card-title">Isolation check</h2>
+      {% if isolation %}
+      <div class="flex items-center gap-3">
+        {% if isolation_bad %}<span class="badge badge-error">faults</span>{% else %}<span class="badge badge-success">clean</span>{% endif %}
+        <span class="text-sm opacity-70">last run {{ isolation.at_text }}</span>
+      </div>
+      <table class="table table-sm">
+        <thead><tr><th>Last run</th><th>Faults</th><th>Checks</th></tr></thead>
+        <tbody>
+          <tr class="{{ 'bad' if isolation_bad else 'ok' }}"><td>{{ isolation.at_text }}</td><td>{{ isolation.faults }}</td><td>{{ isolation.checks }}</td></tr>
+        </tbody>
+      </table>
+      {% else %}
+      <table class="table table-sm"><tbody>
+        <tr class="bad"><td colspan="3">No isolation record.</td></tr>
+      </tbody></table>
+      {% endif %}
+    </div>
+  </section>
+  <section class="card bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title">Canaries</h2>
+      <table class="table table-sm">
+        <thead><tr><th>Workspace</th><th>Canaries</th></tr></thead>
+        <tbody>
+        {% for ws, n in canaries %}<tr><td>{{ ws }}</td><td>{{ n }}</td></tr>
+        {% else %}{{ empty(2, "None.") }}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<section class="card bg-base-100 shadow-sm">
+  <div class="card-body p-0">
+    <h2 class="card-title px-6 pt-5">Per workspace</h2>
+    <div class="overflow-x-auto">
+      <table class="table">
+        <thead><tr><th>Workspace</th><th>Queue</th><th>Jobs</th><th>Gate blocks</th><th>Searches (7 d)</th><th>Mistakes (30 d)</th></tr></thead>
+        <tbody>
+        {% for name, m in workspaces.items() %}
+          <tr>
+            <td class="font-medium">{{ name }}</td>
+            <td>{% for k, n in m.queue.items() %}<span class="badge badge-sm badge-ghost mr-1 whitespace-nowrap">{{ k }}: {{ n }}</span>{% else %}0{% endfor %}</td>
+            <td>{% for k, n in m.jobs.items() %}<span class="badge badge-sm badge-ghost mr-1 whitespace-nowrap">{{ k }}: {{ n }}</span>{% else %}0{% endfor %}</td>
+            <td>{% for k, n in m.gate_blocks.items() %}<span class="badge badge-sm badge-ghost mr-1 whitespace-nowrap">{{ k }}: {{ n }}</span>{% else %}0{% endfor %}</td>
+            <td>{% if m.searches_7d is none %}<span class="opacity-60">not collected</span>{% else %}{{ m.searches_7d }}{% endif %}</td>
+            <td>{{ m.mistakes_30d }}</td>
+          </tr>
+        {% else %}
+          {{ empty(6, "No active workspaces.") }}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

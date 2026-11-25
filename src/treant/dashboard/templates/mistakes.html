@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_ui.html" import pager, empty %}
+{% block title %}Mistakes{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="page-title">Mistakes</h1>
+  <form method="get" action="/mistakes" class="filters flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <label class="input input-sm w-full sm:w-56"><span class="label">Workspace</span><input name="ws" value="{{ ws }}" maxlength="100"></label>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  </form>
+</div>
+{% if notice %}<p role="alert" class="notice alert alert-warning alert-soft">{{ notice }}</p>{% endif %}
+<div class="grid gap-6 lg:grid-cols-3">
+  <div class="lg:col-span-2 space-y-4">
+    <div class="card bg-base-100 shadow-sm overflow-x-auto">
+      <table class="table">
+        <thead><tr><th>#</th><th>Workspace</th><th>When</th><th>Text</th></tr></thead>
+        <tbody>
+        {% for r in rows %}
+          <tr><td class="opacity-60">{{ r.id }}</td><td>{{ r.workspace }}</td><td class="whitespace-nowrap text-xs opacity-70">{{ r.at | when }}</td>
+          <td class="text-block">{{ r.text }}</td></tr>
+        {% else %}
+          {{ empty(4, "No mistakes logged.") }}
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {{ pager(
+      ("/mistakes?ws=" ~ (ws | urlencode) ~ "&offset=" ~ prev) if prev is not none else "",
+      ("/mistakes?ws=" ~ (ws | urlencode) ~ "&offset=" ~ next) if next is not none else "",
+    ) }}
+  </div>
+  <form method="post" action="/mistakes" class="card h-fit bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title">Log a mistake</h2>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <fieldset class="fieldset"><legend class="fieldset-legend">Workspace</legend>
+        <select name="workspace" class="select w-full">{% for w in active %}<option value="{{ w }}">{{ w }}</option>{% endfor %}</select>
+      </fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Text</legend>
+        <textarea name="text" rows="5" maxlength="2000" required class="textarea w-full"></textarea>
+      </fieldset>
+      <div class="card-actions"><button type="submit" class="btn btn-primary">Log</button></div>
+    </div>
+  </form>
+</div>
+{% endblock %}

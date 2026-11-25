@@ -1,0 +1,11 @@
+# /etc/systemd/system/treant-isolation.timer
+[Unit]
+Description=Nightly Treant live isolation test
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=300
+Persistent=true
+
+[Install]
+WantedBy=timers.target

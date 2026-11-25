@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Tokens{% endblock %}
+{% block content %}
+<h1 class="page-title">Tokens</h1>
+<div class="space-y-6">
+  <div class="card bg-base-100 shadow-sm overflow-x-auto">
+    <table class="table table-sm">
+      <thead><tr><th>Id</th><th>Workspace</th><th>Label</th><th>Actions</th><th>Created</th><th>Last used</th><th>Revoked</th><th></th></tr></thead>
+      <tbody>
+      {% for t in tokens %}
+        <tr class="hover:bg-base-200 {{ 'opacity-50' if t.revoked_at else '' }}">
+          <td class="opacity-60">{{ t.id }}</td><td>{{ t.workspace }}</td><td class="font-medium">{{ t.label }}</td>
+          <td class="whitespace-nowrap">{% for a in t.actions %}<span class="badge badge-sm badge-ghost mr-0.5">{{ a }}</span>{% endfor %}</td>
+          <td class="whitespace-nowrap text-xs opacity-70">{{ t.created_at | when }}</td>
+          <td class="whitespace-nowrap text-xs opacity-70">{{ (t.last_used_at | when) or "never" }}</td>
+          <td class="whitespace-nowrap text-xs">{% if t.revoked_at %}<span class="text-error">{{ t.revoked_at | when }}</span>{% endif %}</td>
+          <td>{% if not t.revoked_at %}
+            <form method="post" action="/tokens/{{ t.id }}/revoke" class="inline">
+              <input type="hidden" name="csrf" value="{{ csrf }}">
+              <button type="submit" class="btn btn-xs btn-ghost text-error">Revoke</button>
+            </form>{% endif %}</td>
+        </tr>
+      {% else %}
+        {{ empty(8, "No tokens.") }}
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/tokens" class="card max-w-xl bg-base-100 shadow-sm">
+    <div class="card-body">
+      <h2 class="card-title">Create a token</h2>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="nonce" value="{{ nonce }}">
+      <fieldset class="fieldset"><legend class="fieldset-legend">Workspace</legend>
+        <select name="workspace" class="select w-full">{% for w in active %}<option value="{{ w }}">{{ w }}</option>{% endfor %}</select></fieldset>
+      <fieldset class="fieldset"><legend class="fieldset-legend">Label</legend>
+        <input name="label" maxlength="100" required class="input w-full"></fieldset>
+      <fieldset class="fieldset">
+        <legend class="fieldset-legend">Actions</legend>
+        <div class="flex flex-wrap gap-4">
+        {% for a in token_actions %}<label class="label"><input type="checkbox" name="actions" value="{{ a }}" class="checkbox checkbox-sm"{% if a == "read" %} checked{% endif %}> {{ a }}</label> {% endfor %}
+        </div>
+      </fieldset>
+      <div class="card-actions mt-2"><button type="submit" class="btn btn-primary">Create token</button></div>
+    </div>
+  </form>
+</div>
+{% endblock %}

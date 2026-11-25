@@ -1,0 +1,76 @@
+{% from "_ui.html" import icon %}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Treant{% endblock %} · Treant</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-screen bg-base-200 text-base-content antialiased">
+{% set path = request.url.path %}
+{% if user %}
+<div class="drawer lg:drawer-open">
+  <input id="nav" type="checkbox" class="drawer-toggle" aria-label="menu">
+  <div class="drawer-content flex min-h-screen min-w-0 flex-col">
+    <header class="navbar sticky top-0 z-10 gap-2 border-b border-base-300 bg-base-100/90 px-4 backdrop-blur">
+      <label for="nav" class="btn btn-square btn-ghost lg:hidden" aria-label="open menu">{{ icon("bars-3", "size-6") }}</label>
+      <a href="/" class="text-lg font-bold lg:hidden link-plain">Treant</a>
+      <div class="flex-1"></div>
+      <form class="flex items-center gap-3" method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <div class="avatar avatar-placeholder">
+          <div class="w-8 rounded-full bg-primary text-primary-content"><span class="text-sm font-semibold uppercase">{{ user[:1] }}</span></div>
+        </div>
+        <span class="hidden text-sm sm:inline">{{ user }}</span>
+        {% if can_sign_out %}<button type="submit" class="btn btn-ghost btn-sm" aria-label="Sign out">{{ icon("arrow-right-start-on-rectangle", "size-4") }}<span class="hidden sm:inline">Sign out</span></button>{% endif %}
+      </form>
+    </header>
+    <main class="mx-auto w-full min-w-0 max-w-7xl flex-1 space-y-6 p-4 lg:p-8">
+      {% for f in flashes %}
+      <p role="alert" class="flash flash-{{ f.kind }} alert {{ 'alert-success' if f.kind == 'ok' else 'alert-error' }} alert-soft">{{ f.text }}</p>
+      {% endfor %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  <div class="drawer-side z-20">
+    <label for="nav" class="drawer-overlay" aria-label="close menu"></label>
+    <aside class="flex min-h-full w-64 flex-col border-r border-base-300 bg-base-100">
+      <a href="/" class="flex h-16 items-center gap-2 px-6 text-xl font-bold tracking-tight link-plain">
+        <span class="grid size-8 place-items-center rounded-lg bg-primary text-primary-content">{{ icon("circle-stack", "size-5") }}</span>
+        Treant
+      </a>
+      <ul class="menu w-full gap-1 px-3">
+        {% for href, label, ic in [
+          ("/", "Overview", "home"),
+          ("/queue", "Queue", "inbox-stack"),
+          ("/quarantine", "Quarantine", "shield-exclamation"),
+          ("/jobs", "Jobs", "queue-list"),
+          ("/workspaces", "Workspaces", "folder"),
+          ("/tokens", "Tokens", "key"),
+          ("/memory", "Memory", "circle-stack"),
+          ("/sessions", "Sessions", "chat-bubble-left-right"),
+          ("/mistakes", "Mistakes", "exclamation-triangle"),
+          ("/measurements", "Measurements", "chart-bar"),
+          ("/audit", "Audit", "document-text"),
+        ] %}
+        {% set here = path == href if href == "/" else (path == href or path.startswith(href ~ "/")) %}
+        <li><a href="{{ href }}" class="{{ 'bg-primary/10 font-medium text-primary' if here else '' }}"{% if here %} aria-current="page"{% endif %}>{{ icon(ic) }} {{ label }}</a></li>
+        {% endfor %}
+      </ul>
+    </aside>
+  </div>
+</div>
+{% else %}
+<main class="flex min-h-screen items-center justify-center p-4">
+  <div class="card w-full max-w-lg bg-base-100 shadow-xl">
+    <div class="card-body space-y-2">
+      {% for f in flashes %}
+      <p role="alert" class="flash flash-{{ f.kind }} alert {{ 'alert-success' if f.kind == 'ok' else 'alert-error' }} alert-soft">{{ f.text }}</p>
+      {% endfor %}
+      {% block bare %}{{ self.content() }}{% endblock %}
+    </div>
+  </div>
+</main>
+{% endif %}
+</body>
+</html>

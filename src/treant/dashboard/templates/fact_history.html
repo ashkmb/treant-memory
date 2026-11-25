@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_fact_form.html" import edit_form %}
+{% from "_ui.html" import status as badge %}
+{% block title %}Fact history{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li><a href="/memory/{{ ns | urlencode }}">{{ ns }}</a></li><li>Fact history</li></ul></div>
+<h1 class="page-title">Fact history</h1>
+{% if current %}
+<section class="card bg-base-100 shadow-sm">
+  <div class="card-body">
+    <h2 class="card-title">Edit current</h2>
+    {{ edit_form(ns, fact_id, current.data.text, current.data.status, current.data.type, csrf) }}
+    {% if current.data.status != "retracted" %}
+    <form class="inline" method="post" action="/memory/{{ ns | urlencode }}/fact/{{ fact_id | urlencode }}/retract">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button type="submit" class="btn btn-sm btn-error btn-outline">Retract</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+<h2 class="section-title">Versions</h2>
+<ul class="timeline timeline-vertical timeline-compact">
+{% for v in versions | reverse %}
+  <li>
+    {% if not loop.first %}<hr>{% endif %}
+    <div class="timeline-middle"><span class="block size-3 rounded-full {{ 'bg-primary' if v.current else 'bg-base-300' }}"></span></div>
+    <div class="timeline-end mb-4 w-full">
+      <section class="fact card bg-base-100 shadow-sm">
+        <div class="card-body gap-2 p-4">
+          <p class="meta flex flex-wrap items-center gap-2 text-sm">
+            <span class="font-semibold">v{{ v.version }}</span>{% if v.current %} <span class="badge badge-sm badge-primary">(current)</span>{% endif %}
+            {{ badge(v.data.status) }}
+            {% if v.reason %}<span class="opacity-70">· {{ v.reason }}</span>{% endif %}
+            {% if v.changed_at %}<span class="text-xs opacity-60">· {{ v.changed_at | when }}</span>{% endif %}
+          </p>
+          <p class="text-block">{{ v.data.text }}</p>
+          {% if not v.current %}
+          <form class="flex flex-wrap items-center gap-3" method="post" action="/memory/{{ ns | urlencode }}/fact/{{ fact_id | urlencode }}/restore">
+            <input type="hidden" name="csrf" value="{{ csrf }}">
+            <input type="hidden" name="version" value="{{ v.version }}">
+            {% if ns == "general" %}
+            <label class="label text-sm"><input type="checkbox" name="force" value="1" class="checkbox checkbox-sm checkbox-warning"> restore even if the rules flag it</label>
+            {% endif %}
+            <button type="submit" class="btn btn-xs">Restore this version</button>
+          </form>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+    {% if not loop.last %}<hr>{% endif %}
+  </li>
+{% endfor %}
+</ul>
+{% endblock %}

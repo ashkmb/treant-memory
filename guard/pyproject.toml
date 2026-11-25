@@ -1,0 +1,34 @@
+[project]
+name = "treant-guard"
+version = "0.1.0"
+description = "Pre-flight guard for risky shell commands, driven by Treant rule config"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/ashkmb/treant-memory"
+Repository = "https://github.com/ashkmb/treant-memory"
+
+[project.scripts]
+treant-guard = "treant_guard.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/treant_guard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

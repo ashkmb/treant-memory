@@ -1,0 +1,198 @@
+# Treant production stack. See docs/deploy.md for the full guide.
+#
+# Layout assumed by this file and the scripts in deploy/scripts:
+#   /opt/treant                  a checkout of this repository (build context: ..)
+#   /etc/treant/*.env            the env files, copied from deploy/env/*.env.example
+#   /var/lib/treant/models       the embedding model file (only with the `embed` profile)
+# Override the two directories with the compose variables ENV_DIR and EMBED_MODEL_DIR
+# (read by docker compose for interpolation only; Treant itself never sees them).
+#
+# Env files (keep them root-owned, mode 0600; the dashboard and worker files hold secrets):
+#   db.env         Postgres superuser password, read by the db image at first start only
+#   treant.env     login-role DSN and shared settings: server, worker, dashboard, admin
+#   admin.env      superuser DSN + login password: the one-shot admin CLI only
+#   worker.env     LLM gateway URL, per-workspace keys, Jev key: the worker only
+#   dashboard.env  OIDC client secret, session secret: the dashboard only
+#
+# Profiles:
+#   embed   a bundled llama.cpp embedding server (skip it if you run your own)
+#   admin   the one-shot owner CLI: deploy/scripts/treant <args>
+#
+# Networks (what can reach what):
+#   backend          internal, no route out: db, embed, server, worker, dashboard, admin
+#   server-edge      server only, exists so the loopback port can be published; IP
+#                    masquerading is off, so the server cannot open connections outward
+#   worker-egress    worker only: outbound HTTPS to the LLM gateway and the Jev judge
+#   dashboard-egress dashboard only: outbound HTTPS to the OIDC provider
+
+name: treant
+
+x-hardening: &hardening
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  pids_limit: 256
+  restart: unless-stopped
+
+services:
+  db:
+    # pgvector 0.8.6 on Postgres 17 (Debian bookworm), pinned by tag and digest.
+    image: pgvector/pgvector:0.8.6-pg17-bookworm@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    restart: unless-stopped
+    env_file:
+      - path: ${ENV_DIR:-/etc/treant}/db.env
+        required: true
+    # The entrypoint chowns the data directory and drops to `postgres`.
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [backend]
+    mem_limit: 1g
+    pids_limit: 512
+    # Parallel HNSW index builds use dynamic shared memory.
+    shm_size: 256m
+    stop_grace_period: 60s
+    healthcheck:
+      # Over TCP: the temporary server that initdb starts listens on the socket only.
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "treant"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  embed:
+    # llama.cpp server, `server` variant, pinned by digest. Serves an OpenAI-compatible
+    # /v1/embeddings. Replace with your own service and drop this profile if you have one.
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:9fbaa06d7f4449e2ae0d02b40e0431f7c212dcf231c9e3a7777a6afc2cc8f312
+    profiles: [embed]
+    <<: *hardening
+    command:
+      - "-m"
+      - "/models/embeddinggemma-300M-Q8_0.gguf"
+      - "--embedding"
+      - "--pooling"
+      - "mean"
+      - "-c"
+      - "2048"
+      - "-b"
+      - "2048"
+      - "-ub"
+      - "2048"
+      - "--host"
+      - "0.0.0.0"
+      - "--port"
+      - "8080"
+    volumes:
+      - ${EMBED_MODEL_DIR:-/var/lib/treant/models}:/models:ro
+    networks: [backend]
+    mem_limit: 2g
+
+  server:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: treant:0.1.0
+    <<: *hardening
+    command: ["serve"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ${ENV_DIR:-/etc/treant}/treant.env
+        required: true
+    ports:
+      # Loopback only: put a TLS reverse proxy in front (deploy/caddy/Caddyfile.example).
+      - "127.0.0.1:8000:8000"
+    networks: [backend, server-edge]
+    # Nothing listens on 127.0.0.1:53 in the container. Docker's embedded DNS still
+    # answers service names (db, embed) and every external lookup fails.
+    dns: ["127.0.0.1"]
+    mem_limit: 512m
+    # Healthcheck: the image's own (TCP connect to the TREANT_BIND port).
+
+  worker:
+    image: treant:0.1.0
+    pull_policy: never
+    <<: *hardening
+    command: ["worker"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ${ENV_DIR:-/etc/treant}/treant.env
+        required: true
+      - path: ${ENV_DIR:-/etc/treant}/worker.env
+        required: true
+    networks: [backend, worker-egress]
+    mem_limit: 512m
+    # The worker listens on no port; the image healthcheck would always fail.
+    healthcheck:
+      disable: true
+
+  dashboard:
+    image: treant:0.1.0
+    pull_policy: never
+    <<: *hardening
+    command: ["dashboard"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ${ENV_DIR:-/etc/treant}/treant.env
+        required: true
+      - path: ${ENV_DIR:-/etc/treant}/dashboard.env
+        required: true
+    ports:
+      - "127.0.0.1:8001:8001"
+    networks: [backend, dashboard-egress]
+    mem_limit: 256m
+    # The image check probes TREANT_BIND (the server's port); the dashboard listens on
+    # TREANT_DASHBOARD_BIND, 8001 here.
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8001), 3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # One-shot owner CLI. Never started by `up`; run it through deploy/scripts/treant.
+  admin:
+    image: treant:0.1.0
+    pull_policy: never
+    profiles: [admin]
+    <<: *hardening
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ${ENV_DIR:-/etc/treant}/treant.env
+        required: true
+      - path: ${ENV_DIR:-/etc/treant}/admin.env
+        required: true
+    networks: [backend]
+    mem_limit: 512m
+    healthcheck:
+      disable: true
+
+volumes:
+  # The whole database cluster. Never `docker volume prune` on this host.
+  pgdata:
+
+networks:
+  backend:
+    internal: true
+  # Port publishing needs a non-internal network. Without masquerading, packets the
+  # server sends out keep a container source address that nothing routes back.
+  server-edge:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
+  worker-egress:
+    driver: bridge
+  dashboard-egress:
+    driver: bridge

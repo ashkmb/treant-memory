@@ -1,0 +1,131 @@
+# Treant guard default rule pack.
+
+[[rule]]
+command = ["kubectl"]
+kind = "kube_context"
+flags = ["--context"]
+unknown_if = ["--kubeconfig", "$KUBECONFIG"]
+default_from = ["kubectl", "config", "current-context"]
+
+[[rule]]
+command = ["helm"]
+kind = "kube_context"
+flags = ["--context", "--kube-context"]
+unknown_if = ["--kubeconfig", "$KUBECONFIG"]
+default_from = ["kubectl", "config", "current-context"]
+
+[[rule]]
+command = ["aws"]
+kind = "aws_profile"
+flags = ["--profile"]
+# CLI v2 reads AWS_PROFILE first, v1/botocore AWS_DEFAULT_PROFILE: check every one that is set
+all_values = true
+env = ["AWS_PROFILE", "AWS_DEFAULT_PROFILE"]
+
+[[rule]]
+command = ["terraform"]
+kind = "terraform_dir"
+resolver = "terraform_dir"
+match = "path_prefix"
+
+[[rule]]
+command = ["terragrunt"]
+kind = "terraform_dir"
+resolver = "terraform_dir"
+match = "path_prefix"
+
+[[rule]]
+command = ["git"]
+kind = "git_remote_host"
+subcommands = ["push"]
+global_flags_with_value = ["-C", "-c", "--git-dir", "--work-tree", "--namespace", "--exec-path"]
+resolver = "git_push_host"
+
+[[rule]]
+command = ["ansible-playbook"]
+kind = "ansible_inventory"
+flags = ["-i", "--inventory"]
+short_flag = "-i"
+all_values = true
+env = ["ANSIBLE_INVENTORY"]
+split = ","
+config = { files = ["$ANSIBLE_CONFIG", "./ansible.cfg", "~/.ansible.cfg", "/etc/ansible/ansible.cfg"], format = "ini", key = "defaults.inventory", first_found_only = true }
+
+[[rule]]
+command = ["wrangler"]
+kind = "cloudflare_account"
+skip_subcommands = ["dev", "whoami", "login", "logout", "types", "init", "docs", "help", "--version", "-v"]
+env = ["CLOUDFLARE_ACCOUNT_ID"]
+config = { files = ["wrangler.json", "wrangler.jsonc", "wrangler.toml"], format = "auto", key = "account_id", first_found_only = true, search = "upward" }
+
+# Commands that change a tool's state on disk: the kinds become "can't tell" for the rest of
+# the line, whatever the separator.
+
+[[switch]]
+command = ["kubectx"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["kubectl"]
+args = ["config", "use-context"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["kubectl"]
+args = ["config", "use"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["kubectl"]
+args = ["config", "set-context"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["kubectl"]
+args = ["config", "set"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["kubectl"]
+args = ["config", "rename-context"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["kubectl"]
+args = ["config", "unset"]
+kinds = ["kube_context"]
+
+[[switch]]
+command = ["aws"]
+args = ["configure"]
+kinds = ["aws_profile"]
+
+[[switch]]
+command = ["git"]
+args = ["remote", "add"]
+kinds = ["git_remote_host"]
+
+[[switch]]
+command = ["git"]
+args = ["remote", "set-url"]
+kinds = ["git_remote_host"]
+
+[[switch]]
+command = ["git"]
+args = ["remote", "rename"]
+kinds = ["git_remote_host"]
+
+[[switch]]
+command = ["git"]
+args = ["remote", "remove"]
+kinds = ["git_remote_host"]
+
+[[switch]]
+command = ["git"]
+args = ["remote", "rm"]
+kinds = ["git_remote_host"]
+
+[[switch]]
+command = ["git"]
+args = ["config"]
+kinds = ["git_remote_host"]

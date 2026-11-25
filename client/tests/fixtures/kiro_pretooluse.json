@@ -1,0 +1,11 @@
+{
+  "hook_event_name": "preToolUse",
+  "cwd": "/home/alice/projects/servers",
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "tool_name": "shell",
+  "tool_tags": ["shell", "@builtin"],
+  "tool_input": {
+    "__tool_use_purpose": "Run requested echo command.",
+    "command": "echo hi"
+  }
+}

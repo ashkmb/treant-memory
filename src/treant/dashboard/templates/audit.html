@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_ui.html" import pager, empty %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="page-title">Audit log</h1>
+  <form method="get" action="/audit" class="filters flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <label class="input input-sm w-full sm:w-56"><span class="label">Action prefix</span><input name="action" value="{{ prefix }}" maxlength="64"></label>
+    <button type="submit" class="btn btn-sm">Filter</button>
+  </form>
+</div>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table table-sm">
+    <thead><tr><th>#</th><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr class="hover:bg-base-200">
+        <td class="opacity-60">{{ r.id }}</td><td class="whitespace-nowrap text-xs opacity-70">{{ r.at | when }}</td>
+        <td class="whitespace-nowrap">{{ r.actor }}</td>
+        <td><span class="badge badge-sm badge-ghost whitespace-nowrap">{{ r.action }}</span></td>
+        <td><code class="text-xs break-all">{{ r.detail }}</code></td>
+      </tr>
+    {% else %}
+      {{ empty(5, "Nothing here.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pager(
+  ("/audit?action=" ~ (prefix | urlencode) ~ "&offset=" ~ prev) if prev is not none else "",
+  ("/audit?action=" ~ (prefix | urlencode) ~ "&offset=" ~ next) if next is not none else "",
+) }}
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% from "_ui.html" import status as badge, pager, empty %}
+{% block title %}Nodes {{ ns }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li>{{ ns }}</li></ul></div>
+<div class="flex flex-wrap items-end justify-between gap-4">
+  <h1 class="page-title">Nodes: {{ ns }}</h1>
+  <div class="flex flex-wrap gap-1">
+    <a class="btn btn-sm" href="/memory/{{ ns | urlencode }}/graph">graph</a>
+    <a class="btn btn-sm" href="/memory/{{ ns | urlencode }}/search">semantic search</a>
+    <a class="btn btn-sm btn-ghost" href="/memory/{{ ns | urlencode }}/duplicates">duplicates</a>
+    {% if ns != "general" %}
+    <a class="btn btn-sm btn-ghost" href="/memory/{{ ns | urlencode }}/merges">merges</a>
+    <a class="btn btn-sm btn-ghost" href="/memory/{{ ns | urlencode }}/conflicts">conflicts</a>
+    <a class="btn btn-sm btn-ghost" href="/memory/{{ ns | urlencode }}/sessions">sessions</a>
+    {% endif %}
+  </div>
+</div>
+<form method="get" action="/memory/{{ ns | urlencode }}" class="flex flex-wrap items-center gap-2">
+  <label class="input input-sm w-full sm:w-56"><span class="label">Name</span><input type="search" name="q" value="{{ q }}" placeholder="name prefix"></label>
+  <button type="submit" class="btn btn-sm">Filter</button>
+</form>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table table-sm">
+    <thead><tr><th>Name</th><th>Kind</th><th>Type</th><th>Aliases</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody>
+    {% for n in rows %}
+      <tr class="hover:bg-base-200">
+        <td class="font-medium"><a href="/memory/{{ ns | urlencode }}/node/{{ n.id | urlencode }}">{{ n.name | short }}</a></td>
+        <td>{{ n.kind }}</td><td>{{ n.type }}</td>
+        <td class="opacity-70">{{ n.aliases | join(", ") | short }}</td>
+        <td>{{ badge(n.status) }}</td><td class="whitespace-nowrap text-xs opacity-70">{{ n.created_at | when }}</td>
+      </tr>
+    {% else %}
+      {{ empty(6, "No nodes.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{{ pager(
+  ("/memory/" ~ (ns | urlencode) ~ "?q=" ~ (q | urlencode) ~ "&offset=" ~ prev) if (prev is not none and offset > 0) else "",
+  ("/memory/" ~ (ns | urlencode) ~ "?q=" ~ (q | urlencode) ~ "&offset=" ~ next) if next is not none else "",
+) }}
+{% endblock %}

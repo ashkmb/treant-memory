@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Search {{ ns }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li><a href="/memory/{{ ns | urlencode }}">{{ ns }}</a></li><li>Search</li></ul></div>
+<h1 class="page-title">Search: {{ ns }}</h1>
+{# For "general" the search runs with the first active workspace's context and keeps only hits from general. #}
+{% if not available %}
+<p role="alert" class="alert alert-info alert-soft">No search available: there is no active workspace to search through.</p>
+{% else %}
+<form method="get" action="/memory/{{ ns | urlencode }}/search" class="join w-full max-w-2xl">
+  <input type="search" name="q" value="{{ q }}" placeholder="query" required class="input join-item w-full">
+  <button type="submit" class="btn btn-primary join-item">Search</button>
+</form>
+{% if q %}
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table">
+    <thead><tr><th>Namespace</th><th>Kind</th><th>Type</th><th>Text</th><th>Node</th></tr></thead>
+    <tbody>
+    {% for h in hits %}
+      <tr class="hover:bg-base-200">
+        <td>{{ h.namespace }}</td><td><span class="badge badge-sm badge-ghost">{{ h.kind }}</span></td><td>{{ h.type }}</td>
+        <td class="text-block">{{ h.text | short }}</td>
+        <td>
+          {% if h.kind == "node" %}<a href="/memory/{{ h.link_ns | urlencode }}/node/{{ h.id | urlencode }}">{{ h.node }}</a>
+          {% elif h.kind == "fact" %}{{ h.node }} <a class="text-xs" href="/memory/{{ h.link_ns | urlencode }}/fact/{{ h.id | urlencode }}/history">history</a>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      {{ empty(5, "No hits.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endif %}
+<p><a href="/memory/{{ ns | urlencode }}">Back to nodes</a></p>
+{% endblock %}

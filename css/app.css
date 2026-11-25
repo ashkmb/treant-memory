@@ -1,0 +1,53 @@
+/* Source of src/treant/dashboard/static/app.css; rebuild with scripts/build-css.sh. */
+@import "tailwindcss" source(none);
+@source "../src/treant/dashboard/templates";
+@plugin "../.cache/css/daisyui.mjs" {
+  themes: light --default, dark --prefersdark;
+  logs: false;
+}
+
+@layer components {
+  /* Long texts (facts, sources, settings dumps) keep their line breaks and wrap. */
+  .text-block {
+    @apply whitespace-pre-wrap break-words;
+  }
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight;
+  }
+  .section-title {
+    @apply text-lg font-semibold mt-8 mb-3;
+  }
+}
+
+/* Plain links inside content: primary colour, underline on hover. Buttons and menus keep theirs. */
+@layer base {
+  main a:not(.btn):not(.badge):not(.link-plain) {
+    @apply text-primary hover:underline;
+  }
+}
+
+@layer base {
+  mark {
+    @apply rounded bg-warning px-0.5 text-warning-content;
+  }
+}
+
+/* Isolation-check rows on the measurements page. */
+@layer components {
+  tr.bad {
+    @apply bg-error/10 text-error;
+  }
+  tr.ok {
+    @apply bg-success/10;
+  }
+}
+
+/* Graph page: highlight the node under the pointer. */
+@layer components {
+  svg.graph a:hover circle {
+    @apply stroke-base-content;
+  }
+  svg.graph a:hover text {
+    @apply font-semibold;
+  }
+}

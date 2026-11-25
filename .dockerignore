@@ -1,0 +1,14 @@
+# The image copies only pyproject.toml, uv.lock, LICENSE and src/; keep everything else out of the
+# build context. `**/` patterns match at any depth (a bare name matches the root only).
+.git
+.superpowers
+tests
+docs
+client
+guard
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.env
