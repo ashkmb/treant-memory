@@ -122,7 +122,14 @@ def test_dry_run_changes_nothing(home, cfg_tmp, tmp_path):
 
     out = []
     rc = installer.install(
-        dry_run=True, binary=BIN, home=home, cfg=cfg_tmp, run=boom, out=out.append, uid=501
+        dry_run=True,
+        binary=BIN,
+        home=home,
+        cfg=cfg_tmp,
+        run=boom,
+        out=out.append,
+        uid=501,
+        which=fake_which,
     )
     assert rc == 0 and not calls
     assert {p: p.read_text() for p in home.rglob("*") if p.is_file()} == before
@@ -381,7 +388,14 @@ def test_dry_run_reports_the_legacy_migration(home, cfg_tmp):
 
     out = []
     rc = installer.install(
-        dry_run=True, binary=BIN, home=home, cfg=cfg_tmp, run=boom, out=out.append, uid=501
+        dry_run=True,
+        binary=BIN,
+        home=home,
+        cfg=cfg_tmp,
+        run=boom,
+        out=out.append,
+        uid=501,
+        which=fake_which,
     )
     assert rc == 0 and not calls and legacy.exists()
     assert "would run: launchctl bootout gui/501/com.example.treant.kiro-sweep" in "".join(out)

@@ -114,10 +114,15 @@ def test_rules_linear_time():
         ticket_prefixes=("PRJ",),
         terms=("acme",),
     )
+    # Guards against catastrophic regex backtracking (seconds to minutes on these inputs),
+    # not against a slow machine: best of three runs, generous bound for shared CI runners.
     for chunk in ["a" * 200_000, "a.b-" * 50_000, "acme" * 50_000, "1:" * 100_000, "a-1 " * 50_000]:
-        t = time.perf_counter()
-        check(chunk, d)
-        assert time.perf_counter() - t < 0.2
+        best = float("inf")
+        for _ in range(3):
+            t = time.perf_counter()
+            check(chunk, d)
+            best = min(best, time.perf_counter() - t)
+        assert best < 1.0
 
 
 def test_gate_rules_block_other_workspace_instance_name(db):
