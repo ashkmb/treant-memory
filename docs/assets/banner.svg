@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="ttl dsc"><title id="ttl">Treant</title><desc id="dsc">Treant: long-term graph memory for AI coding agents.</desc>
+<defs><linearGradient id="bgg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E9F4ED"/></linearGradient></defs>
+<rect x="0.5" y="0.5" width="1279" height="399" rx="24" fill="url(#bgg)" stroke="#E3E9E5"/>
+<g stroke="#1F6F4A" stroke-opacity="0.16" stroke-width="2.5">
+<line x1="1000" y1="52" x2="1078" y2="96"/>
+<line x1="1078" y1="96" x2="1160" y2="48"/>
+<line x1="1078" y1="96" x2="1130" y2="160"/>
+<line x1="1160" y1="48" x2="1224" y2="118"/>
+<line x1="1224" y1="118" x2="1130" y2="160"/>
+<line x1="1000" y1="52" x2="1040" y2="150"/>
+<line x1="1040" y1="150" x2="1130" y2="160"/>
+<line x1="1224" y1="118" x2="1206" y2="214"/>
+<line x1="1160" y1="48" x2="1252" y2="52"/>
+<line x1="1224" y1="118" x2="1252" y2="52"/>
+</g>
+<circle cx="1000" cy="52" r="6.5" fill="#1F6F4A" fill-opacity="0.16"/>
+<circle cx="1078" cy="96" r="9" fill="#1F6F4A" fill-opacity="0.16"/>
+<circle cx="1160" cy="48" r="6.5" fill="#E8A33D" fill-opacity="0.16"/>
+<circle cx="1224" cy="118" r="9" fill="#1F6F4A" fill-opacity="0.16"/>
+<circle cx="1130" cy="160" r="6.5" fill="#1F6F4A" fill-opacity="0.16"/>
+<circle cx="1040" cy="150" r="6.5" fill="#1F6F4A" fill-opacity="0.16"/>
+<circle cx="1206" cy="214" r="6.5" fill="#1F6F4A" fill-opacity="0.16"/>
+<circle cx="1252" cy="52" r="6.5" fill="#1F6F4A" fill-opacity="0.16"/>
+<g transform="translate(96 72) scale(2)"><circle cx="64" cy="33" r="24" fill="#3FA56B"/><circle cx="41" cy="46" r="19" fill="#3FA56B"/><circle cx="87" cy="46" r="19" fill="#3FA56B"/><circle cx="50" cy="64" r="16" fill="#3FA56B"/><circle cx="78" cy="64" r="16" fill="#3FA56B"/><circle cx="64" cy="58" r="18" fill="#3FA56B"/><path d="M58 72 C58 88 57 97 49 106 H79 C71 97 70 88 70 72 Z" fill="#7A5A40"/><g stroke="#7A5A40" stroke-width="4.5" stroke-linecap="round" fill="none"><path d="M53 104 C44 106 36 106 28 104"/><path d="M75 104 C84 106 92 106 100 104"/></g><rect x="20" y="111" width="88" height="5" rx="2.5" fill="#7A5A40" fill-opacity="0.75"/><rect x="30" y="120" width="68" height="5" rx="2.5" fill="#7A5A40" fill-opacity="0.5"/><g stroke="#FFFFFF" stroke-width="3" stroke-linecap="round" stroke-opacity="0.92"><line x1="64" y1="28" x2="42" y2="48"/><line x1="64" y1="28" x2="86" y2="48"/><line x1="42" y1="48" x2="64" y2="62"/><line x1="86" y1="48" x2="64" y2="62"/><line x1="64" y1="28" x2="64" y2="62"/></g><circle cx="64" cy="28" r="5.8" fill="#E8A33D"/><circle cx="42" cy="48" r="4.6" fill="#FFFFFF"/><circle cx="86" cy="48" r="4.6" fill="#FFFFFF"/><circle cx="64" cy="62" r="4.6" fill="#FFFFFF"/></g>
+<text x="418" y="186" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="104" font-weight="800" letter-spacing="-2" fill="#0F172A">Treant</text>
+<text x="422" y="246" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="33" font-weight="500" fill="#475569">Long-term graph memory for AI coding agents</text>
+<rect x="422" y="282" width="140" height="40" rx="20" fill="#EEF6F1" stroke="#C3DECE" stroke-width="1.5"/>
+<text x="492" y="308.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="19" font-weight="600" text-anchor="middle" fill="#1F6F4A">MCP server</text>
+<rect x="576.0" y="282" width="235" height="40" rx="20" fill="#EEF6F1" stroke="#C3DECE" stroke-width="1.5"/>
+<text x="694" y="308.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="19" font-weight="600" text-anchor="middle" fill="#1F6F4A">Postgres + pgvector</text>
+<rect x="825.4" y="282" width="235" height="40" rx="20" fill="#EEF6F1" stroke="#C3DECE" stroke-width="1.5"/>
+<text x="943" y="308.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="19" font-weight="600" text-anchor="middle" fill="#1F6F4A">Isolated workspaces</text>
+<rect x="1074.8" y="282" width="172" height="40" rx="20" fill="#EEF6F1" stroke="#C3DECE" stroke-width="1.5"/>
+<text x="1161" y="308.5" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif" font-size="19" font-weight="600" text-anchor="middle" fill="#1F6F4A">Command guard</text>
+</svg>

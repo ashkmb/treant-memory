@@ -1,229 +1,207 @@
-# treant-memory
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img alt="Treant: long-term graph memory for AI coding agents" src="docs/assets/banner.svg" width="100%">
+  </picture>
+</p>
 
-Long-term memory for AI coding agents, served over MCP and stored in Postgres with pgvector.
+<div align="center">
+
+[![CI](https://img.shields.io/github/actions/workflow/status/ashkmb/treant-memory/ci.yml?label=CI&logo=github)](https://github.com/ashkmb/treant-memory/actions/workflows/ci.yml)
+[![Licence](https://img.shields.io/badge/licence-PolyForm%20NC%20%2B%20small--company%20grant-1F6F4A)](#licence)
+[![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![Postgres](https://img.shields.io/badge/Postgres%2017-pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![MCP](https://img.shields.io/badge/MCP-streamable%20HTTP-0F172A)](https://modelcontextprotocol.io/)
+
+[Quick start](#quick-start) · [Features](#features) · [How it works](#how-it-works) · [Screenshots](#screenshots) · [Deploy](#production-deployment) · [Licence](#licence)
+
+</div>
+
+---
+
+## Overview
+
+Treant is a self-hosted MCP server that gives Claude Code, Kiro and any other MCP client a memory
+that outlives the session. What an agent learns is scrubbed, saved and distilled into a knowledge
+graph that the next session can search.
+
+- **Remembers across sessions:** a brief at session start and hybrid search over vectors and graph,
+  so agents stop re-learning the same things.
+- **Keeps contexts apart:** each workspace (`personal`, `acme`, `startup`) is its own Postgres schema
+  and role, and a token reaches exactly one.
+- **Shares only what is safe:** know-how reaches the common `general` schema only through a gate of
+  rules and two independent judges.
 
 Status: source-available, early (0.1.0). The Python package and the CLI are called `treant`.
 
-## What it is
+## Why Treant
 
-Treant keeps what an agent learns in one session (facts, decisions, lessons, dead ends,
-procedures, open threads, warnings) and gives it back in the next one. Memory is split into
-**workspaces** (for example `personal`, `acme` for an employer, `startup` for a side business).
-Each workspace lives in its own Postgres schema behind its own database role, and an agent
-holds a token for exactly one workspace, so work for one client never leaks into another.
-Know-how that is safe to share across workspaces is promoted to a common `general` schema, but
-only after it passes a gate of rules and two independent judges.
+Seen from a coding agent's side of the terminal, four things go wrong without it:
 
-The repository holds three packages:
-
-| Package | Path | What |
-|---|---|---|
-| `treant` | `src/treant` | MCP server, background worker, owner CLI and dashboard |
-| `treant-client` | `client/` | Claude Code and Kiro adapters: session hooks, stdio MCP proxy, save worker |
-| `treant-guard` | `guard/` | Local pre-flight guard for risky shell commands (kubectl, aws, terraform, git push, ...) |
+- **Every session starts from zero.** The agent rediscovers the repository layout, the build quirk
+  and the approach it already ruled out last week, and spends tokens doing it. Treant hands it a
+  brief at session start (warnings, open threads, what memory holds about the repository) and a
+  hybrid search over vectors and a graph of everything saved before.
+- **Context bleeds between clients.** When one machine serves an employer, a client and your own
+  projects, a single memory store will surface one client's host names in another client's session.
+  In Treant a token reaches one workspace, and the database role behind it has no grant on any
+  other workspace's schema. An isolation test (nightly in the production setup) tries to cross
+  every pair of workspaces and fails loudly if it can.
+- **Shared know-how and private details look alike.** A lesson about a library is useful
+  everywhere; the name of a production cluster is not. Each session is distilled into a workspace
+  half and a general half, and the general half reaches the shared schema only after rules (ticket
+  IDs, IPs, account IDs, your domains and terms, every workspace's instance names), an LLM judge and
+  the Jev judge all agree.
+- **Agents run commands against the wrong target.** An agent working in one project can still
+  `kubectl delete` against whatever context is current. `treant-guard` reads each shell command
+  before it runs, resolves the kube context, AWS profile, git host, Terraform folder, Ansible
+  inventory or Cloudflare account it acts on, and asks or refuses when that target is protected or
+  belongs to another workspace. It runs locally, without a server.
 
 ## Features
 
-- **Workspace isolation in the database.** One schema `ws_<name>` and one role per workspace;
-  the server switches to that role for every query. A canary and isolation test proves that no
-  workspace can read another (`treant isolation-test`).
-- **Workspace-bound tokens with action scopes** (`create`, `read`, `update`, `delete`). Only a
-  SHA-256 of the secret is stored.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/features-dark.svg">
+    <img alt="Feature overview: memory across sessions, isolated workspaces, gated shared know-how, scrubbing before storage, command guard, owner dashboard" src="docs/assets/features.svg" width="100%">
+  </picture>
+</p>
+
+### Memory that carries over
+
 - **MCP tools:** `save_session`, `search`, `brief`, `warnings`, `update_fact`, `retract`,
-  `report_mistake` (and the deprecated `guard_check`).
-- **Hybrid search:** cosine similarity over workspace and `general` vectors plus a one-hop
-  graph walk.
-- **Scrubbing before storage.** The client and the server both remove secrets, tokens, IP
-  addresses, private host names and configured terms. A save the scrubber is not sure about is
-  quarantined for the owner instead of stored.
-- **Distillation.** A model turns each saved session into graph items: nodes, edges and facts
-  for the workspace, and concepts and facts proposed for `general`.
-- **The gate on `general`.** Deterministic rules (ticket IDs, IPs, account IDs, configured
-  domains and terms, other workspaces' instance names), then an LLM judge, then the Jev judge.
-  Failing facts are rewritten at most twice, then blocked. Publishing can be automatic or wait
-  for owner review.
-- **Owner dashboard** (`treant dashboard`): review queue, quarantine, jobs, workspaces and
-  settings, tokens, memory browser with history and restore, duplicates, merges, conflicts, a
-  graph view, mistakes, measurements and the audit log. OIDC login (Authelia and Authentik are
-  covered by the tests) or a single-owner mode for a trusted network.
-- **Guard** (`treant-guard`): decides locally, without a server, whether a shell command acts on
-  a target (kube context, AWS profile, git remote host, Terraform folder, ...) that belongs to
-  the current workspace, and answers run, ask or deny.
+  `report_mistake` (plus the deprecated `guard_check`).
+- **Typed saves:** journal, facts, decisions, lessons, dead ends, procedures, changes, open threads,
+  preferences, warnings and client memory.
+- **Hybrid search:** cosine similarity over the workspace's and `general`'s vectors, plus facts
+  reached by a one-hop graph walk from the matched nodes.
+- **Distillation:** a model turns each saved session into nodes, edges and facts. Near-duplicate
+  names are flagged for a merge, superseded facts are recorded as conflicts, and every change keeps
+  its history so it can be restored.
 
-## Design and architecture
+### Workspaces isolated by the database
 
-The full description is in [docs/architecture.md](docs/architecture.md). The diagrams below
-show the main parts.
+- One schema `ws_<name>` and one role per workspace; the server runs every transaction under
+  `SET LOCAL ROLE`, and search drops any hit whose schema is not the token's.
+- Tokens are bound to one workspace and carry action scopes (`create`, `read`, `update`,
+  `delete`). Only a SHA-256 of the secret is stored.
+- `treant canary plant` and `treant isolation-test` prove on a schedule that no workspace can
+  reach another through search, brief, guard, the graph walk or a direct `SELECT`.
+
+### A gate in front of shared knowledge
+
+- Deterministic rules first, then an LLM judge, then the Jev judge. A failing fact is rewritten at
+  most twice, then blocked.
+- Publishing is automatic or waits for owner review, per workspace. A judge that is down makes the
+  job wait; nothing passes on one judge.
+
+### Scrubbed before storage
+
+- The client and the server both remove secrets, tokens, IP addresses, private host names and
+  configured terms. A save the scrubber is not sure about is quarantined for the owner instead of
+  stored.
+
+### A guard for risky commands
+
+- The shipped rule pack covers `kubectl`, `helm`, `aws`, `terraform`, `terragrunt`, `git push`,
+  `ansible-playbook` and `wrangler`; add your own rules in TOML.
+- Modes `protect` (default), `production`, `allowlist` and `off`, per workspace. Fails closed on an
+  invalid config, an internal error or the 3 second budget.
+
+### Owner dashboard
+
+- Review queue, quarantine, jobs, workspaces and settings, tokens, a memory browser with history
+  and restore, duplicates, merges, conflicts, a graph view, mistakes, measurements and the audit
+  log.
+- OIDC login (Authelia and Authentik are covered by the tests) with re-authentication for sensitive
+  actions, or a single-owner mode for a trusted network. Server-rendered, no JavaScript.
+
+## How it works
+
+The full description is in [docs/architecture.md](docs/architecture.md).
 
 ### System overview
 
-```mermaid
-flowchart LR
-  subgraph machine["User machine"]
-    cc["Claude Code"]
-    kiro["Kiro"]
-    other["Any MCP client"]
-    client["treant-client<br/>hooks, mcp-proxy, save worker"]
-    guard["treant-guard<br/>local, no network"]
-    keychain[("Keychain<br/>one token per workspace")]
-    cc --> client
-    kiro --> client
-    client --> guard
-    client --> keychain
-  end
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/architecture-dark.svg">
+  <img alt="System overview: developer machine with Claude Code, Kiro, treant-client, treant-guard and the Keychain; TLS reverse proxy; Treant host with serve, dashboard, CLI and worker on Postgres; external embedding service, LLM gateway, Jev judge and OIDC provider" src="docs/assets/architecture.svg" width="100%">
+</picture>
 
-  proxy["Reverse proxy<br/>TLS"]
-
-  subgraph host["Treant host"]
-    serve["treant serve<br/>MCP at /mcp"]
-    worker["treant worker<br/>embed, distill, apply, gate"]
-    dash["treant dashboard"]
-    cli["treant CLI<br/>owner, superuser DSN"]
-    subgraph pg["Postgres + pgvector"]
-      control[("control<br/>tokens, jobs, queue, audit")]
-      general[("general<br/>shared concepts and facts")]
-      wss[("ws_personal, ws_acme, ws_startup<br/>one schema and role each")]
-    end
-    timers["Timers<br/>backup: pg_dump per schema<br/>treant isolation-test"]
-  end
-
-  embed["Embedding service<br/>/v1/embeddings"]
-  llm["OpenAI-compatible<br/>LLM gateway"]
-  jev["Jev judge<br/>third-party API"]
-  oidc["OIDC provider"]
-
-  client -- "MCP, bearer token" --> proxy
-  other -- "MCP, bearer token" --> proxy
-  proxy --> serve
-  proxy --> dash
-  serve --> pg
-  serve --> embed
-  worker --> pg
-  worker --> embed
-  worker -- "distill, rewrite, LLM judge" --> llm
-  worker -- "gate score" --> jev
-  dash --> pg
-  dash --> embed
-  dash --> oidc
-  cli --> pg
-  timers --> pg
-```
+Agents reach `treant serve` over MCP (streamable HTTP at `/mcp`) with a bearer token, either
+directly or through `treant-client`, which adds session hooks, a stdio MCP proxy that picks the
+token for the current folder, and a background save worker. The worker is the only process that
+calls the LLM gateway and the Jev judge; the server and the dashboard use only the embedding
+service, to embed search queries. Everything lives in one
+Postgres database with a `control` schema, the shared `general` schema and one schema per
+workspace.
 
 ### Workspace isolation
 
-```mermaid
-flowchart TB
-  token["Token for acme<br/>actions: create, read"]
-  mw["Bearer middleware<br/>sha256 lookup in control.tokens"]
-  action{"Tool needs an action<br/>save_session, report_mistake: create<br/>search, brief, warnings: read<br/>update_fact: update, retract: delete"}
-  login["treant_login<br/>connects, inherits nothing"]
-  role["SET LOCAL ROLE treant_ws_acme"]
-  own[("ws_acme<br/>read and write")]
-  others[("ws_personal, ws_startup")]
-  general[("general<br/>read only for workspace roles")]
-  ctl[("control.jobs, control.mistakes<br/>insert only")]
-  gate["worker gate stage<br/>treant_publisher role"]
-  ownerw["owner: CLI or dashboard<br/>treant_admin role"]
-  refused["error: forbidden"]
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/isolation-dark.svg">
+  <img alt="Workspace isolation: token, bearer middleware, action check, SET LOCAL ROLE; the workspace role reads and writes its own schema, reads general, inserts into control.jobs and control.mistakes, and has no grant on other workspaces" src="docs/assets/isolation.svg" width="100%">
+</picture>
 
-  token --> mw --> action
-  action -- "not in token" --> refused
-  action -- "allowed" --> login --> role
-  role --> own
-  role --> general
-  role --> ctl
-  role -. "no grant" .-x others
-  gate -- "publishes" --> general
-  ownerw -- "approves, edits" --> general
+A token maps to one workspace and a set of actions. The application connects as a login role that
+inherits nothing and switches to the workspace's role for each transaction, so even a bug that asks
+for another workspace's schema gets a permission error. Only the gate (as the publisher role) and
+the owner (as the admin role) write to `general`. Canary items in every workspace and a nightly
+isolation test check every pair of workspaces.
 
-  canary["treant canary plant<br/>marker items per workspace"]
-  iso["treant isolation-test<br/>search, brief, guard, walk, direct select<br/>for every pair of workspaces"]
-  canary --> iso
-  iso -. "must find no marker" .-> others
-```
+### Save, distillation and the gate
 
-### Save and distillation
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/pipeline-dark.svg">
+  <img alt="Pipeline: save_session, server scrub, store and queue, embed, distill, apply into the workspace graph and the general queue, then the gate with rules, LLM judge and Jev judge, ending published, waiting_review or blocked, with owner review" src="docs/assets/pipeline.svg" width="100%">
+</picture>
 
-```mermaid
-sequenceDiagram
-  autonumber
-  participant C as Client hook, Kiro sweep or agent
-  participant S as treant serve
-  participant DB as Postgres
-  participant W as treant worker
-  participant E as Embedding service
-  participant L as LLM gateway
-  participant J as Jev judge
-  participant O as Owner
-  Note over C: treant-client hooks scrub, summarize with claude -p, scrub again
-  C->>S: save_session(sections), workspace token
-  S->>S: server scrub
-  alt scrubber unsure
-    S->>DB: revision quarantined, no jobs
-  else confident
-    S->>DB: session, revision, journal entry, embed and distill jobs
-  end
-  W->>E: embed journal, facts and nodes
-  W->>DB: store vectors
-  W->>L: distill the revision (workspace alias)
-  W->>DB: store generation, queue apply job
-  W->>DB: apply workspace half (nodes, edges, facts, merge flags, conflicts)
-  W->>DB: queue general half in control.general_queue, one gate job per item
-  loop each queue item
-    W->>W: rules: ticket IDs, IPs, account IDs, domains, terms, instance names
-    W->>L: LLM judge (judge_alias)
-    W->>J: Jev score, only after the LLM said yes
-    opt a fact fails, at most 2 rewrites
-      W->>L: rewrite the fact, then gate it again
-    end
-  end
-  alt pass and publish = auto
-    W->>DB: published to general
-  else pass and publish = review
-    W->>DB: waiting_review
-  else still failing, or a concept fails
-    W->>DB: blocked
-  end
-  O->>DB: approve or drop in the dashboard queue or with treant general approve
-```
+A save is scrubbed, stored as a session revision and a journal entry, and queued. The worker embeds
+it (from then on the journal entry is searchable), then distills it with one model call into a workspace half
+(applied straight into the workspace graph) and a general half (queued, one gate job per item).
+Items that pass are published, or wait for review when the workspace is set to `review`; the owner
+decides on everything else in the dashboard or with `treant general approve|drop`.
 
 ### Guard decision
 
-```mermaid
-flowchart TD
-  cmd["Command line from Claude Code PreToolUse<br/>or Kiro preToolUse"] --> valid{"Guard config valid?"}
-  valid -- "no" --> pre0{"Names a guarded program?"}
-  pre0 -- "yes" --> askinv["ask: guard config invalid"]
-  pre0 -- "no" --> run0["run"]
-  valid -- "yes" --> pre{"Names a guarded program<br/>or a tool switch?"}
-  pre -- "no" --> run0
-  pre -- "yes" --> ws{"Folder mapped to a workspace?"}
-  ws -- "no" --> run0
-  ws -- "yes" --> mode{"Mode of the workspace"}
-  mode -- "off" --> run0
-  mode -- "protect, production, allowlist" --> lex["Read the line segment by segment<br/>follow cd, export, unset, set -a<br/>kubectx, use-context, git remote: can't tell after"]
-  lex --> resolve["Resolve each target<br/>kube_context, aws_profile, git_remote_host,<br/>terraform_dir, ansible_inventory, cloudflare_account<br/>from flags, env, config files, default_from"]
-  resolve --> t{"Each target"}
-  t -- "in deny" --> deny["deny"]
-  t -- "in protect" --> ask["ask"]
-  t -- "in own allow" --> run["run"]
-  t -- "only in another<br/>workspace's allow" --> prod{"production mode?"}
-  prod -- "yes" --> run
-  prod -- "no" --> ask
-  t -- "unlisted or can't tell" --> al{"allowlist mode?"}
-  al -- "yes" --> ask
-  al -- "no" --> run
-  run -. "rule matched and a token" .-> warn["warnings lookup on the server<br/>a memory warning turns run into ask"]
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/guard-dark.svg">
+  <img alt="Guard: shell command, prefilter, read the line segment by segment, resolve each target, compare with deny, protect and allow lists under the workspace's mode, giving run, ask or deny" src="docs/assets/guard.svg" width="100%">
+</picture>
 
-Any denied target makes the whole command `deny`; otherwise any finding makes it `ask`. An
-internal error or the 3 second budget running out also asks (fail closed).
+The guard runs in the Claude Code `PreToolUse` or Kiro `preToolUse` hook. It follows `cd`,
+`export` and similar state changes on the same line, resolves each target from flags, environment,
+config files or a `default_from` command, and compares it with the workspace's lists. Any denied
+target makes the whole command `deny`, any other finding makes it `ask`. When a rule matched and the
+workspace has a token, a memory warning on the server can also turn a run into an ask. The rule
+language, modes and known gaps are in [guard/README.md](guard/README.md).
 
-## Quickstart
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img alt="Dashboard home" src="docs/assets/screenshots/home.png"></td>
+    <td width="50%"><img alt="Graph view" src="docs/assets/screenshots/graph.png"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Overview:</b> queue, quarantine, dead jobs and tokens per workspace</sub></td>
+    <td align="center"><sub><b>Graph view:</b> nodes and edges, rendered on the server as SVG</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img alt="Review queue" src="docs/assets/screenshots/review-queue.png"></td>
+    <td width="50%"><img alt="Node detail" src="docs/assets/screenshots/node.png"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Review queue:</b> an item headed for <code>general</code> and why it was held; approve (edited if needed) or drop</sub></td>
+    <td align="center"><sub><b>Node:</b> facts with their history, edges and journal entries</sub></td>
+  </tr>
+</table>
+
+## Quick start
 
 Needs Docker with Compose. Everything listens on loopback only.
 
 ```sh
+git clone https://github.com/ashkmb/treant-memory.git && cd treant-memory
 cp .env.example .env          # then set POSTGRES_PASSWORD and TREANT_LOGIN_PASSWORD
 docker compose build
 docker compose up -d postgres embed            # the first start downloads the embedding model (about 330 MB)
@@ -235,16 +213,7 @@ curl http://127.0.0.1:8000/healthz             # ok
 docker compose run --rm admin token create personal --label laptop --actions create,read,update,delete
 ```
 
-The token is printed once and not stored. Connect any MCP client that speaks streamable HTTP
-to `http://127.0.0.1:8000/mcp` with the header `Authorization: Bearer <token>`, for example:
-
-```sh
-claude mcp add --transport http treant-personal http://127.0.0.1:8000/mcp \
-  --header "Authorization: Bearer <token>"
-```
-
-For the Claude Code and Kiro hooks (session briefs, automatic saves, the guard) install
-`treant-client` instead; see [client/README.md](client/README.md).
+The token is printed once and not stored.
 
 `compose.yml` runs `postgres` (`pgvector/pgvector:0.8.6-pg17-bookworm`), `embed` (llama.cpp
 server with EmbeddingGemma 300M), `treant` (`serve`), `worker` and a one-shot `admin` service
@@ -253,38 +222,63 @@ For a public host put the server behind a TLS reverse proxy and set `TREANT_ALLO
 
 ### Models: what works without them
 
+The quickstart runs without any chat model. Add them in `.env` when you want distillation and
+promotion to `general`.
+
 | Without | What still works | What does not |
 |---|---|---|
 | LLM gateway (`TREANT_LITELLM_URL`, `TREANT_LITELLM_KEY_<WS>`) | Saves are stored, embedded and searchable (journal entries); `brief`, `warnings`, the guard. | Distillation into nodes and facts, and therefore promotion to `general`. Distill jobs fail as `model_unavailable` and end up dead after 12 attempts (replay them later with `treant jobs retry --status dead`). To keep a workspace journal-only on purpose, run `treant workspace set <ws> --backend none`. |
-| Jev judge (`TREANT_JEV_API_KEY`) | Everything in the workspace, including distillation. | Automatic publishing to `general`. Gate jobs fail as `judge_unavailable` and the items stay `pending`. Promote items yourself with `treant general approve <id>` (or in the dashboard). |
-
-The Jev judge is a third-party service (default endpoint `https://api.typesafe.ai`, override
-with `TREANT_JEV_URL` and `TREANT_JEV_MODEL`); its key is required for automatic publishing to
-`general`. A workspace with `--backend none` never sends anything to any model: its general
-items are held as `blocked` (reason `judge:none`) for the owner.
+| Jev judge (`TREANT_JEV=off`, the quickstart default) | Everything in the workspace, including distillation and the LLM judge. Items that pass the rules and the LLM judge wait in the review queue. | Automatic publishing to `general`. Approve items yourself with `treant general approve <id>` (or in the dashboard). |
 
 The LLM gateway is any OpenAI-compatible chat endpoint (LiteLLM was used in development). The
 worker posts to `<TREANT_LITELLM_URL>/chat/completions` with the workspace's `alias` (default
 `default`) as the model, and the workspace's own key `TREANT_LITELLM_KEY_<WORKSPACE>`, so each
 workspace can have its own model and budget.
 
-### Embeddings
+The Jev judge is a third-party service (default endpoint `https://api.typesafe.ai`, override
+with `TREANT_JEV_URL` and `TREANT_JEV_MODEL`); its key is required for automatic publishing to
+`general`. `TREANT_JEV=off` turns it off: Jev is never called, and nothing is published without
+your approval, whatever the workspace's publish mode. The quickstart starts with Jev off; set
+`TREANT_JEV=on` and `TREANT_JEV_API_KEY` in `.env` to turn it on. A workspace with `--backend none` never sends anything to any model: its general
+items are held as `blocked` (reason `judge:none`) for the owner.
 
-The supported embedding model is **EmbeddingGemma 300M (768 dimensions)**. The vector columns
-are declared `vector(768)` and the embedder sends EmbeddingGemma's query and document prompt
-prefixes, so other models or dimensions do not work without code changes. Choose the
-embedding service before the first save. Any service that serves this model behind an
-OpenAI-compatible `/v1/embeddings` works; the quickstart uses llama.cpp with
-`ggml-org/embeddinggemma-300M-GGUF`.
+## Connect Claude Code or Kiro
+
+**Any MCP client.** Connect a client that speaks streamable HTTP to `http://127.0.0.1:8000/mcp`
+with the header `Authorization: Bearer <token>`. For Claude Code:
+
+```sh
+claude mcp add --transport http treant-personal http://127.0.0.1:8000/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+**With the hooks (macOS).** `treant-client` adds a brief at session start, an automatic save at
+session end, a stdio MCP proxy that picks the token from the folder's workspace, and the command
+guard, for Claude Code and Kiro:
+
+```sh
+uv tool install ./client          # puts treant-client on PATH (pulls in ./guard)
+treant-client token set personal  # prompts; stored in the macOS Keychain
+treant-client install --dry-run   # review the diffs
+treant-client install
+```
+
+Set `url` (and `kiro_agent` for Kiro) in `~/.config/treant/config.toml`, and map your folders to
+workspaces under `[workspaces]` in `~/.config/treant/guard.toml`.
+[client/README.md](client/README.md) has the details, including `uninstall`;
+[guard/README.md](guard/README.md) covers the guard's config, modes and rules.
 
 ## Production deployment
 
 To run Treant in production (Postgres + pgvector, embedding service, LLM gateway, Jev judge,
 OIDC dashboard, backups and the nightly isolation test), follow
-[docs/deploy.md](docs/deploy.md). It ships a ready Compose stack and example env files in
-`deploy/`.
+[docs/deploy.md](docs/deploy.md). It ships a ready Compose stack, example env files, systemd
+timers and a Caddy example in `deploy/`.
 
-## Configuration
+<details>
+<summary><b>Configuration</b></summary>
+
+<br>
 
 Server (`treant serve`, `treant worker`, `treant dashboard`, owner CLI):
 
@@ -295,11 +289,12 @@ Server (`treant serve`, `treant worker`, `treant dashboard`, owner CLI):
 | `TREANT_DATABASE_URL` | everything else (login role DSN) | required |
 | `TREANT_EMBED_URL` | `serve`, `worker`, `dashboard`, `canary plant`, `isolation-test` | required |
 | `TREANT_EMBED_MODEL` | model name sent to the embedding service | `embeddinggemma-300m` |
-| `TREANT_EMBED_DIMS` | must stay `768` (see Embeddings) | `768` |
+| `TREANT_EMBED_DIMS` | must stay `768` (see Requirements and limitations) | `768` |
 | `TREANT_ROLE_PREFIX` | prefix of every database role | `treant` |
 | `TREANT_BIND` | `serve` listen address | `127.0.0.1:8000` |
 | `TREANT_ALLOWED_HOSTS` | comma-separated public host names; turns on Host and Origin checks | off |
 | `TREANT_LITELLM_URL`, `TREANT_LITELLM_KEY_<WS>` | worker: distillation, rewrites, LLM judge | unset |
+| `TREANT_JEV` | worker: `on` or `off`; off never calls Jev and sends every pass to review | `on` (`off` in the quickstart) |
 | `TREANT_JEV_API_KEY`, `TREANT_JEV_URL`, `TREANT_JEV_MODEL` | worker: the Jev judge | key unset |
 
 Dashboard (`treant dashboard`):
@@ -318,7 +313,12 @@ Per-workspace settings (`treant workspace set <ws> ...`): `--backend litellm|non
 `--judge-alias`, `--publish auto|review`, and the gate's deny lists `--domain`,
 `--ticket-prefix`, `--term` (terms also drive the server scrubber).
 
-## CLI
+</details>
+
+<details>
+<summary><b>CLI</b></summary>
+
+<br>
 
 ```
 treant bootstrap | upgrade
@@ -346,15 +346,50 @@ The `target` commands and the `guard_check` MCP tool are deprecated and kept for
 clients: the client guard decides locally from its own config and asks the server only for
 `warnings`.
 
-## Clients and guard
+</details>
 
-- [client/README.md](client/README.md): `treant-client` wires Claude Code and Kiro to Treant
-  (session start brief, automatic save at session end, stdio MCP proxy that picks the token from
-  the folder's workspace). It currently targets macOS (Keychain, launchd).
-- [guard/README.md](guard/README.md): `treant-guard` configuration, rule pack, modes and known
-  gaps. It runs on its own, without a Treant server.
+## Requirements and limitations
 
-## Tests
+- **Server:** Docker with Compose for the quickstart. The production guide targets Linux with Docker
+  Engine and the Compose plugin v2.24 or newer, and about 2 GB of RAM with the bundled embedder. No
+  image is published to a registry; you build it from this repository.
+- **Python 3.12+** for `treant` and `treant-client` (`treant-guard` needs 3.11+).
+- **Postgres 17 with pgvector 0.8 or newer.** No other extension is needed.
+- **One embedding model.** The supported model is **EmbeddingGemma 300M (768 dimensions)**. The
+  vector columns are declared `vector(768)` and the embedder sends EmbeddingGemma's query and
+  document prompt prefixes, so other models or dimensions do not work without code changes. There
+  is no re-embed command: choose the embedding service before the first save. Any service that
+  serves this model behind an OpenAI-compatible `/v1/embeddings` works; the quickstart uses
+  llama.cpp with `ggml-org/embeddinggemma-300M-GGUF`.
+- **Jev for automatic promotion.** With `TREANT_JEV=off` (or without a Jev key) nothing reaches
+  `general` unless you approve it. The default Jev endpoint is a third-party internet service, so
+  with Jev on, text that passed the rules and the LLM judge leaves your network; decide whether
+  that is acceptable for your workspaces.
+- **`treant-client` is macOS only today.** It keeps tokens in the macOS Keychain and runs the Kiro
+  sweep as a launchd job. On other systems, connect your MCP client to the server directly (no
+  automatic brief, save or guard hook).
+- **The guard catches an agent's mistakes, not an adversary.** It reads only the command line it is
+  given; aliases, scripts, `ssh` and deliberate obfuscation are out of its sight. In `protect` mode
+  a target it cannot read runs; use `allowlist` mode where that is not enough. The full list is under
+  "Known gaps" in [guard/README.md](guard/README.md).
+
+## Project structure
+
+```
+treant-memory/
+├── src/treant/        MCP server, worker, owner CLI and dashboard (package `treant`)
+│   ├── dashboard/     owner web UI (Starlette, server-rendered)
+│   └── sql/           schema for control, general and workspaces
+├── client/            treant-client: Claude Code and Kiro adapters
+├── guard/             treant-guard: local command guard and its rule pack
+├── deploy/            production Compose stack, env files, scripts, systemd timers, Caddy
+├── docs/              architecture.md, deploy.md, images
+├── tests/             server test suite
+├── compose.yml        quickstart stack (loopback only)
+└── compose.test.yml   Postgres + pgvector for the tests
+```
+
+## Contributing and security
 
 ```sh
 docker compose -f compose.test.yml up -d    # Postgres 17 + pgvector on 127.0.0.1:55432
@@ -366,7 +401,8 @@ uv sync --directory guard && uv run --directory guard ruff check && uv run --dir
 The database tests skip when that Postgres is not reachable. Each run creates its own database
 and role prefix and drops them afterwards. CI runs all three suites with the database.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. Report vulnerabilities
+privately as described in [SECURITY.md](SECURITY.md), not in public issues.
 
 ## Licence
 

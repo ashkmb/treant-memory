@@ -2,8 +2,9 @@
 
 This document describes how Treant is built: the processes, the database layout, how
 workspaces are kept apart, what happens to a save, the gate in front of `general`, the guard,
-the isolation test and the dashboard. The diagrams in the README ("Design and architecture")
-give the overview; this page has the detail. For running it in production see
+the isolation test and the dashboard. The README's "How it works" section gives the overview
+with the same diagrams; this page has the detail. Text (Mermaid) versions of the diagrams are
+at the end, under [Diagram sources](#diagram-sources). For running it in production see
 [deploy.md](deploy.md).
 
 ## Components
@@ -26,8 +27,13 @@ External services:
   LLM judge, with one key per workspace (`TREANT_LITELLM_KEY_<WS>`);
 - the Jev judge, a third-party scoring API (`TREANT_JEV_URL`, default
   `https://api.typesafe.ai`, key `TREANT_JEV_API_KEY`), required for automatic publishing to
-  `general`;
+  `general`; `TREANT_JEV=off` turns it off and sends every pass to the owner's review;
 - an OIDC provider for the dashboard login (unless `TREANT_DASHBOARD_AUTH=none`).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/architecture-dark.svg">
+  <img alt="System overview: clients, reverse proxy, Treant host with serve, dashboard, CLI and worker on Postgres, and the external services" src="assets/architecture.svg" width="100%">
+</picture>
 
 ## Database layout
 
@@ -77,7 +83,17 @@ The middleware answers a missing or unknown token with a bare `401` and no OAuth
 A tool whose action the token lacks returns `{"error": "forbidden"}`. Errors never carry
 exception text.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/isolation-dark.svg">
+  <img alt="Workspace isolation: token, middleware, action check, role switch, and what the workspace role can reach" src="assets/isolation.svg" width="100%">
+</picture>
+
 ## Saving
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/pipeline-dark.svg">
+  <img alt="Save, distillation and the gate, ending published, waiting_review or blocked" src="assets/pipeline.svg" width="100%">
+</picture>
 
 `save_session(client_session_id, sections, unsure)` takes typed sections (`journal`, `facts`,
 `decisions`, `lessons`, `dead_ends`, `procedures`, `changes`, `open_threads`, `preferences`,
@@ -124,7 +140,7 @@ Failure categories and attempt caps:
 | `model_unavailable` | model service down, timed out or 429/5xx | distill 12, gate 20 |
 | `model_rejected` | a 4xx such as a bad key | distill 12, gate 20 |
 | `model_bad_reply` | the distill model answered with no JSON object | 3 |
-| `judge_unavailable` | Jev or the LLM judge down or not configured | 20 |
+| `judge_unavailable` | Jev or the LLM judge down, or Jev on without a key | 20 |
 | `judge_rejected` | a judge refused the request (4xx) | 3 |
 | `judge_bad_reply` | the LLM judge's reply held no usable verdict | 3 |
 | `settings_invalid` | a workspace settings row does not parse | 20 |
@@ -161,7 +177,8 @@ queued before.
 2. **LLM judge** (workspace `judge_alias`), asked with the question for the item's kind from
    `criteria.toml`.
 3. **Jev**, asked only after the LLM judge said yes. A pass needs both: the LLM's yes and a Jev
-   score at or above the threshold in `criteria.toml`.
+   score at or above the threshold in `criteria.toml`. With `TREANT_JEV=off` Jev is skipped and
+   the LLM's yes only sends the item to `waiting_review`; it is never published automatically.
 
 A failing fact is rewritten by the workspace's model and gated again, at most twice, then
 `blocked`. A concept is never rewritten; a failing concept is `blocked`. A concept that already
@@ -191,6 +208,11 @@ matches one of the given words.
 The client guard uses it to add memory warnings to a decision.
 
 ## Guard
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/guard-dark.svg">
+  <img alt="Guard decision: prefilter, read the line, resolve targets, compare with lists under the mode" src="assets/guard.svg" width="100%">
+</picture>
 
 The guard runs on the client, in the hook, before a shell command runs. It needs no server.
 It loads rules (the shipped pack plus the user's `~/.config/treant/guard.toml` and
@@ -251,3 +273,173 @@ Security Policy stays `default-src 'self'`.
 
 A settings row that does not parse quarantines that workspace's saves and holds its gate jobs
 (`settings_invalid`) until it is fixed.
+
+## Diagram sources
+
+Text versions of the four diagrams above, checked against the code. The SVGs in
+`docs/assets/` (light and `-dark` variants) are drawn from the same boxes and arrows; when one
+changes, change the other.
+
+### System overview
+
+```mermaid
+flowchart LR
+  subgraph machine["User machine"]
+    cc["Claude Code"]
+    kiro["Kiro"]
+    other["Any MCP client"]
+    client["treant-client<br/>hooks, mcp-proxy, save worker"]
+    guard["treant-guard<br/>local, no network"]
+    keychain[("Keychain<br/>one token per workspace")]
+    cc --> client
+    kiro --> client
+    client --> guard
+    client --> keychain
+  end
+
+  proxy["Reverse proxy<br/>TLS"]
+
+  subgraph host["Treant host"]
+    serve["treant serve<br/>MCP at /mcp"]
+    worker["treant worker<br/>embed, distill, apply, gate"]
+    dash["treant dashboard"]
+    cli["treant CLI<br/>owner, superuser DSN"]
+    subgraph pg["Postgres + pgvector"]
+      control[("control<br/>tokens, jobs, queue, audit")]
+      general[("general<br/>shared concepts and facts")]
+      wss[("ws_personal, ws_acme, ws_startup<br/>one schema and role each")]
+    end
+    timers["Timers<br/>backup: pg_dump per schema<br/>treant isolation-test"]
+  end
+
+  embed["Embedding service<br/>/v1/embeddings"]
+  llm["OpenAI-compatible<br/>LLM gateway"]
+  jev["Jev judge<br/>third-party API"]
+  oidc["OIDC provider"]
+
+  client -- "MCP, bearer token" --> proxy
+  other -- "MCP, bearer token" --> proxy
+  proxy --> serve
+  proxy --> dash
+  serve --> pg
+  serve --> embed
+  worker --> pg
+  worker --> embed
+  worker -- "distill, rewrite, LLM judge" --> llm
+  worker -- "gate score" --> jev
+  dash --> pg
+  dash --> embed
+  dash --> oidc
+  cli --> pg
+  timers --> pg
+```
+
+### Workspace isolation
+
+```mermaid
+flowchart TB
+  token["Token for acme<br/>actions: create, read"]
+  mw["Bearer middleware<br/>sha256 lookup in control.tokens"]
+  action{"Tool needs an action<br/>save_session, report_mistake: create<br/>search, brief, warnings: read<br/>update_fact: update, retract: delete"}
+  login["treant_login<br/>connects, inherits nothing"]
+  role["SET LOCAL ROLE treant_ws_acme"]
+  own[("ws_acme<br/>read and write")]
+  others[("ws_personal, ws_startup")]
+  general[("general<br/>read only for workspace roles")]
+  ctl[("control.jobs, control.mistakes<br/>insert only")]
+  gate["worker gate stage<br/>treant_publisher role"]
+  ownerw["owner: CLI or dashboard<br/>treant_admin role"]
+  refused["error: forbidden"]
+
+  token --> mw --> action
+  action -- "not in token" --> refused
+  action -- "allowed" --> login --> role
+  role --> own
+  role --> general
+  role --> ctl
+  role -. "no grant" .-x others
+  gate -- "publishes" --> general
+  ownerw -- "approves, edits" --> general
+
+  canary["treant canary plant<br/>marker items per workspace"]
+  iso["treant isolation-test<br/>search, brief, guard, walk, direct select<br/>for every pair of workspaces"]
+  canary --> iso
+  iso -. "must find no marker" .-> others
+```
+
+### Save and distillation
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant C as Client hook, Kiro sweep or agent
+  participant S as treant serve
+  participant DB as Postgres
+  participant W as treant worker
+  participant E as Embedding service
+  participant L as LLM gateway
+  participant J as Jev judge
+  participant O as Owner
+  Note over C: treant-client hooks scrub, summarize with claude -p, scrub again
+  C->>S: save_session(sections), workspace token
+  S->>S: server scrub
+  alt scrubber unsure
+    S->>DB: revision quarantined, no jobs
+  else confident
+    S->>DB: session, revision, journal entry, embed and distill jobs
+  end
+  W->>E: embed journal, facts and nodes
+  W->>DB: store vectors
+  W->>L: distill the revision (workspace alias)
+  W->>DB: store generation, queue apply job
+  W->>DB: apply workspace half (nodes, edges, facts, merge flags, conflicts)
+  W->>DB: queue general half in control.general_queue, one gate job per item
+  loop each queue item
+    W->>W: rules: ticket IDs, IPs, account IDs, domains, terms, instance names
+    W->>L: LLM judge (judge_alias)
+    W->>J: Jev score, only after the LLM said yes
+    opt a fact fails, at most 2 rewrites
+      W->>L: rewrite the fact, then gate it again
+    end
+  end
+  alt pass and publish = auto
+    W->>DB: published to general
+  else pass and publish = review
+    W->>DB: waiting_review
+  else still failing, or a concept fails
+    W->>DB: blocked
+  end
+  O->>DB: approve or drop in the dashboard queue or with treant general approve
+```
+
+### Guard decision
+
+```mermaid
+flowchart TD
+  cmd["Command line from Claude Code PreToolUse<br/>or Kiro preToolUse"] --> valid{"Guard config valid?"}
+  valid -- "no" --> pre0{"Names a guarded program?"}
+  pre0 -- "yes" --> askinv["ask: guard config invalid"]
+  pre0 -- "no" --> run0["run"]
+  valid -- "yes" --> pre{"Names a guarded program<br/>or a tool switch?"}
+  pre -- "no" --> run0
+  pre -- "yes" --> ws{"Folder mapped to a workspace?"}
+  ws -- "no" --> run0
+  ws -- "yes" --> mode{"Mode of the workspace"}
+  mode -- "off" --> run0
+  mode -- "protect, production, allowlist" --> lex["Read the line segment by segment<br/>follow cd, export, unset, set -a<br/>kubectx, use-context, git remote: can't tell after"]
+  lex --> resolve["Resolve each target<br/>kube_context, aws_profile, git_remote_host,<br/>terraform_dir, ansible_inventory, cloudflare_account<br/>from flags, env, config files, default_from"]
+  resolve --> t{"Each target"}
+  t -- "in deny" --> deny["deny"]
+  t -- "in protect" --> ask["ask"]
+  t -- "in own allow" --> run["run"]
+  t -- "only in another<br/>workspace's allow" --> prod{"production mode?"}
+  prod -- "yes" --> run
+  prod -- "no" --> ask
+  t -- "unlisted or can't tell" --> al{"allowlist mode?"}
+  al -- "yes" --> ask
+  al -- "no" --> run
+  run -. "rule matched and a token" .-> warn["warnings lookup on the server<br/>a memory warning turns run into ask"]
+```
+
+Any denied target makes the whole command `deny`; otherwise any finding makes it `ask`. An
+internal error or the 3 second budget running out also asks (fail closed).

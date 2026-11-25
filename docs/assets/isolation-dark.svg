@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="838" viewBox="0 0 1000 838" role="img" aria-labelledby="ttl dsc"><title id="ttl">Treant workspace isolation</title><desc id="dsc">A token is bound to one workspace and a set of actions. The bearer middleware looks up sha256 of the secret, the tool's action is checked, then the transaction runs as that workspace's role. The role reads and writes its own schema, reads general, inserts into control.jobs and control.mistakes, and has no grant on other workspaces. Only the gate and the owner write general. Canaries and the nightly isolation test check every pair of workspaces.</desc><style>
+.s{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;}
+.m{font-family:ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;}
+.title{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;font-size:17px;font-weight:700;fill:#E6EDF3;}
+.body{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;font-size:14.5px;fill:#A3AEBA;}
+.mono{font-family:ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;font-size:14px;fill:#E6EDF3;}
+.glabel{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;font-size:14px;font-weight:700;letter-spacing:1.4px;}
+.alabel{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;font-size:14px;font-weight:600;fill:#A3AEBA;}
+.caption{font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;font-size:14px;font-weight:700;letter-spacing:1.6px;fill:#A3AEBA;}
+</style><defs><marker id="ah-line" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L9.2,5 L0,9.2 Z" fill="#8B949E"/></marker><marker id="ah-forest" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L9.2,5 L0,9.2 Z" fill="#56C78F"/></marker><marker id="ah-red" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L9.2,5 L0,9.2 Z" fill="#FF7B72"/></marker><marker id="ah-amber" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L9.2,5 L0,9.2 Z" fill="#F2B85B"/></marker><marker id="ah-muted" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L9.2,5 L0,9.2 Z" fill="#A3AEBA"/></marker><marker id="ah-run" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.8 L9.2,5 L0,9.2 Z" fill="#6FDDA0"/></marker></defs><rect x="0.5" y="0.5" width="999" height="837" rx="20" fill="#0D1117" stroke="#30363D"/><text x="24" y="38" class="caption">WORKSPACE ISOLATION</text>
+<rect x="48" y="60" width="196" height="112" rx="12" fill="#161B22" stroke="#24533B" stroke-width="1.2"/>
+<rect x="49" y="70" width="4" height="92" rx="2" fill="#56C78F"/>
+<text x="66" y="101.0" class="title">Token for acme</text>
+<text x="66" y="123.0" class="body">trt_&lt;id&gt;_&lt;secret&gt;</text>
+<text x="66" y="143.0" class="body">actions: create, read</text>
+<rect x="284" y="60" width="196" height="112" rx="12" fill="#161B22" stroke="#24533B" stroke-width="1.2"/>
+<rect x="285" y="70" width="4" height="92" rx="2" fill="#56C78F"/>
+<text x="302" y="101.0" class="title">Bearer middleware</text>
+<text x="302" y="123.0" class="body">sha256(secret) lookup</text>
+<text x="302" y="143.0" class="body">unknown token: 401</text>
+<rect x="520" y="60" width="196" height="112" rx="12" fill="#161B22" stroke="#24533B" stroke-width="1.2"/>
+<rect x="521" y="70" width="4" height="92" rx="2" fill="#56C78F"/>
+<text x="538" y="101.0" class="title">Action check</text>
+<text x="538" y="123.0" class="body">the tool's action must</text>
+<text x="538" y="143.0" class="body">be in the token</text>
+<rect x="756" y="60" width="196" height="112" rx="12" fill="#161B22" stroke="#24533B" stroke-width="1.2"/>
+<rect x="757" y="70" width="4" height="92" rx="2" fill="#56C78F"/>
+<text x="774" y="101.0" class="title">SET LOCAL ROLE</text>
+<text x="774" y="123.0" class="body">treant_ws_acme</text>
+<text x="774" y="143.0" class="body">login role inherits nothing</text>
+<path d="M244,116 L284,116" fill="none" stroke="#56C78F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-forest)"/>
+<path d="M480,116 L520,116" fill="none" stroke="#56C78F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-forest)"/>
+<path d="M716,116 L756,116" fill="none" stroke="#56C78F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-forest)"/>
+<path d="M618,172 L618,204" fill="none" stroke="#FF7B72" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-red)"/>
+<rect x="518" y="204" width="200" height="36" rx="18.0" fill="#3A1719" stroke="#6E2B2D" stroke-width="1.2"/>
+<text x="618.0" y="226.9" class="m" text-anchor="middle" font-size="14px" font-weight="600" fill="#FF8A80">{&quot;error&quot;: &quot;forbidden&quot;}</text>
+<rect x="48" y="196" width="432" height="136" rx="12" fill="#161B22" stroke="#30363D" stroke-width="1.2"/>
+<text x="66" y="222" class="title" font-size="15.5px">Tool  →  action the token needs</text>
+<rect x="66" y="236" width="78" height="20" rx="10.0" fill="#0F2219"/>
+<text x="105.0" y="250.7" class="m" text-anchor="middle" font-size="13.5px" font-weight="700" fill="#56C78F">create</text>
+<text x="158" y="251" class="mono" fill="#A3AEBA">save_session, report_mistake</text>
+<rect x="66" y="259" width="78" height="20" rx="10.0" fill="#0F2219"/>
+<text x="105.0" y="273.7" class="m" text-anchor="middle" font-size="13.5px" font-weight="700" fill="#56C78F">read</text>
+<text x="158" y="274" class="mono" fill="#A3AEBA">search, brief, warnings</text>
+<rect x="66" y="282" width="78" height="20" rx="10.0" fill="#0F2219"/>
+<text x="105.0" y="296.7" class="m" text-anchor="middle" font-size="13.5px" font-weight="700" fill="#56C78F">update</text>
+<text x="158" y="297" class="mono" fill="#A3AEBA">update_fact</text>
+<rect x="66" y="305" width="78" height="20" rx="10.0" fill="#0F2219"/>
+<text x="105.0" y="319.7" class="m" text-anchor="middle" font-size="13.5px" font-weight="700" fill="#56C78F">delete</text>
+<text x="158" y="320" class="mono" fill="#A3AEBA">retract</text>
+<rect x="24" y="380" width="952" height="236" rx="18" fill="#1F1913" stroke="#4D3B2A" stroke-width="1.2"/>
+<text x="44" y="600" class="glabel" fill="#D4A77F">POSTGRES  ·  WHAT TREANT_WS_ACME CAN TOUCH</text>
+<path d="M854.0,172 V356" fill="none" stroke="#8B949E" stroke-width="1.8"/>
+<path d="M158.0,356 H854.0" fill="none" stroke="#8B949E" stroke-width="1.8"/>
+<path d="M158.0,356 L152.0,356.0 Q146.0,356 146.0,362.0 L146.0,400" fill="none" stroke="#FF7B72" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 5" marker-end="url(#ah-red)"/>
+<path d="M382.0,356 L382.0,400" fill="none" stroke="#8B949E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-line)"/>
+<path d="M618.0,356 L618.0,400" fill="none" stroke="#8B949E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-line)"/>
+<path d="M854.0,350 L854.0,400" fill="none" stroke="#56C78F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-forest)"/>
+<path d="M48,411 A98.0,11 0 0 1 244,411 V555 A98.0,11 0 0 1 48,555 Z" fill="#161B22" stroke="#6E2B2D" stroke-width="1.4" stroke-dasharray="6 4"/>
+<ellipse cx="146.0" cy="411" rx="98.0" ry="11" fill="#2A1416" stroke="#6E2B2D" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="146.0" y="473.5" class="mono" text-anchor="middle" font-weight="700" font-size="15.5px" fill="#FF7B72">other ws_*</text>
+<text x="146.0" y="495.5" class="body" text-anchor="middle">personal, startup</text>
+<text x="146.0" y="515.5" class="body" text-anchor="middle">no grant at all</text>
+<circle cx="224" cy="434" r="11" fill="#3A1719" stroke="#FF8A80" stroke-width="1.5"/><path d="M219.5,429.5 l9,9 M228.5,429.5 l-9,9" stroke="#FF8A80" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M284,411 A98.0,11 0 0 1 480,411 V555 A98.0,11 0 0 1 284,555 Z" fill="#161B22" stroke="#4D3B2A" stroke-width="1.4"/>
+<ellipse cx="382.0" cy="411" rx="98.0" ry="11" fill="#1F1913" stroke="#4D3B2A" stroke-width="1.4"/>
+<text x="382.0" y="473.5" class="mono" text-anchor="middle" font-weight="700" font-size="15.5px" fill="#D4A77F">control</text>
+<text x="382.0" y="495.5" class="body" text-anchor="middle">jobs, mistakes</text>
+<text x="382.0" y="515.5" class="body" text-anchor="middle">insert only</text>
+<circle cx="460" cy="434" r="11" fill="#12301F" stroke="#6FDDA0" stroke-width="1.5"/><path d="M455,434 l3.5,3.5 l6.5,-7" fill="none" stroke="#6FDDA0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M520,411 A98.0,11 0 0 1 716,411 V555 A98.0,11 0 0 1 520,555 Z" fill="#161B22" stroke="#4D3B2A" stroke-width="1.4"/>
+<ellipse cx="618.0" cy="411" rx="98.0" ry="11" fill="#1F1913" stroke="#4D3B2A" stroke-width="1.4"/>
+<text x="618.0" y="473.5" class="mono" text-anchor="middle" font-weight="700" font-size="15.5px" fill="#D4A77F">general</text>
+<text x="618.0" y="495.5" class="body" text-anchor="middle">read only</text>
+<text x="618.0" y="515.5" class="body" text-anchor="middle">for every workspace</text>
+<circle cx="696" cy="434" r="11" fill="#12301F" stroke="#6FDDA0" stroke-width="1.5"/><path d="M691,434 l3.5,3.5 l6.5,-7" fill="none" stroke="#6FDDA0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M756,411 A98.0,11 0 0 1 952,411 V555 A98.0,11 0 0 1 756,555 Z" fill="#161B22" stroke="#24533B" stroke-width="1.4"/>
+<ellipse cx="854.0" cy="411" rx="98.0" ry="11" fill="#0F2219" stroke="#24533B" stroke-width="1.4"/>
+<text x="854.0" y="473.5" class="mono" text-anchor="middle" font-weight="700" font-size="15.5px" fill="#56C78F">ws_acme</text>
+<text x="854.0" y="495.5" class="body" text-anchor="middle">read and write</text>
+<text x="854.0" y="515.5" class="body" text-anchor="middle">its own schema</text>
+<circle cx="932" cy="434" r="11" fill="#12301F" stroke="#6FDDA0" stroke-width="1.5"/><path d="M927,434 l3.5,3.5 l6.5,-7" fill="none" stroke="#6FDDA0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="424" y="636" width="228" height="62" rx="12" fill="#161B22" stroke="#5E4720" stroke-width="1.2"/>
+<rect x="425" y="646" width="4" height="42" rx="2" fill="#F2B85B"/>
+<text x="442" y="662.0" class="title">Worker gate</text>
+<text x="442" y="684.0" class="body">treant_publisher role</text>
+<rect x="676" y="636" width="276" height="62" rx="12" fill="#161B22" stroke="#5E4720" stroke-width="1.2"/>
+<rect x="677" y="646" width="4" height="42" rx="2" fill="#F2B85B"/>
+<text x="694" y="662.0" class="title">Owner: CLI or dashboard</text>
+<text x="694" y="684.0" class="body">treant_admin role</text>
+<path d="M574,636 L600,568" fill="none" stroke="#F2B85B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-amber)"/>
+<path d="M760,636 L662,568" fill="none" stroke="#F2B85B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-amber)"/>
+<text x="424" y="724" class="body" font-size="14px">publishes after rules + two judges</text>
+<text x="676" y="724" class="body" font-size="14px">approves, edits, restores (audited)</text>
+<rect x="48" y="636" width="352" height="62" rx="12" fill="#161B22" stroke="#30363D" stroke-width="1.2"/>
+<rect x="49" y="646" width="4" height="42" rx="2" fill="#A3AEBA"/>
+<text x="66" y="662.0" class="mono" font-weight="700" font-size="15.5px">treant canary plant &lt;ws&gt;</text>
+<text x="66" y="684.0" class="body">marker items in every workspace</text>
+<path d="M224,698 L224,746" fill="none" stroke="#8B949E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah-line)"/>
+<rect x="48" y="746" width="904" height="70" rx="12" fill="#161B22" stroke="#30363D" stroke-width="1.2"/>
+<rect x="49" y="756" width="4" height="50" rx="2" fill="#A3AEBA"/>
+<text x="66" y="786.0" class="mono" font-weight="700" font-size="15.5px">treant isolation-test  (nightly)</text>
+<text x="372" y="776" class="body">for every pair: search, brief, guard, graph walk, direct SELECT</text>
+<text x="372" y="798" class="body">must find no marker  ·  exit 0 clean, 1 on any fault</text></svg>
