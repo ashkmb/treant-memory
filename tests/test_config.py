@@ -33,3 +33,21 @@ def test_invalid_role_prefix_rejected_at_load(bad):
     base = {"TREANT_DATABASE_URL": "a", "TREANT_ADMIN_DATABASE_URL": "b", "TREANT_EMBED_URL": "c"}
     with pytest.raises(ValueError, match="TREANT_ROLE_PREFIX"):
         Settings.from_env({**base, "TREANT_ROLE_PREFIX": bad})
+
+
+BASE = {"TREANT_DATABASE_URL": "a", "TREANT_ADMIN_DATABASE_URL": "b", "TREANT_EMBED_URL": "c"}
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, True), ("", True), ("on", True), ("off", False), (" OFF ", False)],
+)
+def test_jev_switch(value, expected):
+    env = dict(BASE) if value is None else {**BASE, "TREANT_JEV": value}
+    assert Settings.from_env(env).jev_enabled is expected
+
+
+@pytest.mark.parametrize("bad", ["no", "false", "0", "disabled"])
+def test_unknown_jev_switch_rejected_at_load(bad):
+    with pytest.raises(ValueError, match="TREANT_JEV"):
+        Settings.from_env({**BASE, "TREANT_JEV": bad})

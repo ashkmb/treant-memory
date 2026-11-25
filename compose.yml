@@ -5,7 +5,8 @@
 #   POSTGRES_PASSWORD       Postgres superuser password (first start only)
 #   TREANT_LOGIN_PASSWORD   password of the treant_login role that bootstrap creates
 # Optional, for distillation and the gate (see README.md, "Models"):
-#   TREANT_LITELLM_URL, TREANT_LITELLM_KEY_<WORKSPACE>, TREANT_JEV_API_KEY
+#   TREANT_LITELLM_URL, TREANT_LITELLM_KEY_<WORKSPACE>
+#   TREANT_JEV=on with TREANT_JEV_API_KEY (Jev is off here: every pass waits for your review)
 
 name: treant-quickstart
 
@@ -85,6 +86,7 @@ services:
       <<: *treant-env
       TREANT_LITELLM_URL: ${TREANT_LITELLM_URL:-}
       TREANT_LITELLM_KEY_PERSONAL: ${TREANT_LITELLM_KEY_PERSONAL:-}
+      TREANT_JEV: ${TREANT_JEV:-off}
       TREANT_JEV_API_KEY: ${TREANT_JEV_API_KEY:-}
     depends_on:
       postgres:

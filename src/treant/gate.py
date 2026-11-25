@@ -6,7 +6,9 @@ the fact text, or a concept's name, aliases and type. Rules (``gate_rules``) run
 they find nothing, the judges are asked with the question for the item's kind (``criteria``:
 ``question`` for facts, ``concept_question`` for concepts). The LLM judge goes first; Jev is
 asked only after its yes, and a pass needs both (the LLM's yes and Jev score >= threshold). A
-pass publishes (workspace ``publish = auto``) or waits for the owner (``review``). A failure
+pass publishes (workspace ``publish = auto``) or waits for the owner (``review``). With
+``TREANT_JEV=off`` Jev is never called and the LLM's yes alone is not enough to publish: the
+item waits for the owner whatever the workspace's publish mode. A failure
 rewrites a fact through the origin workspace's backend (at most ``MAX_REWRITES`` times, then
 ``blocked``); a concept is never rewritten and goes straight to ``blocked``. A workspace with
 ``backend = "none"`` never sends anything to a model: its items are held as ``blocked`` with
@@ -21,7 +23,7 @@ text. Neither ever sees a workspace name, origin, another item or the deny list.
 ``run`` returns a status and raises ``Retry`` (category) for anything that must wait: a judge
 down, refusing or answering nothing usable (``judge_unavailable``/``judge_rejected``/
 ``judge_bad_reply``), the rewrite model down (``model_unavailable``/``model_rejected``),
-unparseable settings (``settings_invalid``). ``handle`` completes the job, or fails it with that
+unparseable settings or ``TREANT_JEV`` (``settings_invalid``). ``handle`` completes the job, or fails it with that
 category and its attempt cap: 3 for ``judge_bad_reply`` and ``judge_rejected`` (a retry repeats
 the same deterministic call), ``MAX_ATTEMPTS`` (20) for the rest. An empty rewrite reply counts
 as a bad rewrite (capped by ``MAX_REWRITES``), not an outage.
@@ -285,13 +287,18 @@ def _hold(db: Database, queue_id: int, rewrites: int, status: str, reasons: list
     return status if _settle(db, queue_id, rewrites, status, reasons) else "stale"
 
 
-def _judge(judges: Judges | DefaultJudges, text: str, kind: str) -> list[dict[str, Any]]:
-    """Ask the LLM judge, then (only after its yes) Jev; the reasons of the one that did not
-    pass. A "no" from the LLM fails the item without paying for Jev."""
+def _judge(
+    judges: Judges | DefaultJudges, text: str, kind: str, jev_on: bool = True
+) -> list[dict[str, Any]]:
+    """Ask the LLM judge, then (only after its yes, and only when ``jev_on``) Jev; the reasons
+    of the one that did not pass. A "no" from the LLM fails the item without paying for Jev.
+    With Jev off the caller must not publish on an empty result: it only means "review"."""
     try:
         ok = judges.llm(text, kind)
         if ok is not True:
             return [_reason("judge:llm", 0, len(text))]
+        if not jev_on:
+            return []
         score = judges.jev(text, kind)
     except BackendBadReply:
         raise Retry("judge_bad_reply") from None
@@ -397,8 +404,12 @@ def run(
         deny = gate_rules.load_deny(db)
     except InvalidInput:
         raise Retry("settings_invalid") from None
+    try:
+        jev_on = config.jev_enabled(env)
+    except ValueError:
+        raise Retry("settings_invalid") from None
     with default_judges(env, ws, s, backend_factory) as clients:
-        return _gate(db, queue_id, ws, item, rewrites, s, deny, judges or clients, clients)
+        return _gate(db, queue_id, ws, item, rewrites, s, deny, judges or clients, clients, jev_on)
 
 
 def _gate(
@@ -411,6 +422,7 @@ def _gate(
     deny: gate_rules.DenyList,
     judges: Judges | DefaultJudges,
     clients: DefaultJudges,
+    jev_on: bool = True,
 ) -> str:
     text = _checked_text(item)
     reasons = [_reason(f.category, f.start, f.end) for f in gate_rules.check(text, deny)]
@@ -419,10 +431,10 @@ def _gate(
             db, queue_id, rewrites, "blocked", [*reasons, _reason("judge:none", 0, len(text))]
         )
     if not reasons:
-        reasons = _judge(judges, text, item["kind"])
+        reasons = _judge(judges, text, item["kind"], jev_on)
 
     if not reasons:
-        if s.publish == "review":
+        if s.publish == "review" or not jev_on:  # one judge never publishes on its own
             return _hold(db, queue_id, rewrites, "waiting_review", [])
         try:
             _publish(db, queue_id, None, "gate", expect=("pending", rewrites))

@@ -165,16 +165,19 @@ Each requirement below is stated as the contract the code expects. File referenc
   `TREANT_JEV_MODEL=jev-1.13.0`. The default endpoint is a third-party internet service:
   the checked text leaves your network. It has already passed the rules and the LLM judge,
   but decide whether that is acceptable for your workspaces.
-- **It is required for automatic publishing, and there is no switch to turn it off.**
-  Without `TREANT_JEV_API_KEY`, every gate job that reaches Jev fails as
-  `judge_unavailable`, is retried up to 20 times and ends `dead`; its queue item stays
-  `pending`. Nothing is ever published to `general` automatically. Everything else works:
-  saves, search, briefs, distillation into the workspace graph.
+- **It is required for automatic publishing.** With `TREANT_JEV=on` (the default) and no
+  `TREANT_JEV_API_KEY`, every gate job that reaches Jev fails as `judge_unavailable`, is
+  retried up to 20 times and ends `dead`; its queue item stays `pending`. Everything else
+  works: saves, search, briefs, distillation into the workspace graph.
 - Ways to run without it:
-  1. Review by hand. Pending items stay in the queue; the owner publishes them with
-     `treant general approve <id>` (after `treant general show <id>`) or from the dashboard's
-     review queue, or drops them with `treant general drop <id>`. The owner's approval runs
-     the rules again and refuses on a finding unless `--yes` is given.
+  1. `TREANT_JEV=off` (recommended). The gate never calls Jev. An item that passes the
+     rules and the LLM judge goes to `waiting_review` whatever the workspace's publish
+     mode; one judge never publishes on its own. The owner publishes it with
+     `treant general approve <id>` (after `treant general show <id>`) or from the
+     dashboard's review queue, or drops it with `treant general drop <id>`. The owner's
+     approval runs the rules again and refuses on a finding unless `--yes` is given. Any
+     value other than `on` or `off` stops the CLI at start and makes gate jobs fail as
+     `settings_invalid`.
   2. A replacement judge. Point `TREANT_JEV_URL` at your own service that implements the
      request and reply above (any bearer value in `TREANT_JEV_API_KEY`). A judge that always
      answers 1.0 turns the gate into "rules plus LLM judge"; do that knowingly.
@@ -283,6 +286,7 @@ All variables Treant reads, by env file. Defaults are from `config.py` and
 | `TREANT_LOGIN_PASSWORD` | `admin.env` | for `bootstrap` | | Password set on the login role |
 | `TREANT_LITELLM_URL` | `worker.env` | for distillation | | OpenAI-compatible base URL |
 | `TREANT_LITELLM_KEY_<WS>` | `worker.env` | per workspace | | Gateway key of workspace `<ws>` |
+| `TREANT_JEV` | `worker.env` | no | `on` | `off`: never call Jev, send every pass to review |
 | `TREANT_JEV_API_KEY` | `worker.env` | for auto-publishing | | Jev bearer key |
 | `TREANT_JEV_URL` | `worker.env` | no | `https://api.typesafe.ai` | Jev base URL |
 | `TREANT_JEV_MODEL` | `worker.env` | no | `jev-1.13.0` | Jev model |
@@ -486,7 +490,7 @@ Job failure categories:
 | `model_unavailable` | gateway down, timed out, 429/5xx, or no URL/key configured | distill 12, gate 20 |
 | `model_rejected` | a 4xx from the gateway, such as a bad key or unknown model | distill 12, gate 20 |
 | `model_bad_reply` | the distill model answered without a JSON object | 3 |
-| `judge_unavailable` | Jev or the LLM judge down, or Jev not configured | 20 |
+| `judge_unavailable` | Jev or the LLM judge down, or Jev on without a key | 20 |
 | `judge_rejected` | a judge refused the request (4xx) | 3 |
 | `judge_bad_reply` | the LLM judge's reply held no `{"ok": ...}` | 3 |
 | `settings_invalid` | a workspace's settings row does not parse | 20 |

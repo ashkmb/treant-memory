@@ -899,3 +899,48 @@ def test_empty_rewrite_reply_counts_as_a_bad_rewrite(db):
     st, item, _, rewrites, _, _ = _queue(db, qid)
     assert (st, rewrites, item["text"]) == ("pending", 1, f"Ticket ABC-123 lesson {t}")
     assert backend.max_tokens == [gate.REWRITE_MAX_TOKENS]
+
+
+JEV_OFF = {"TREANT_JEV": "off"}
+
+
+def test_jev_off_sends_a_pass_to_review_without_calling_jev(db):
+    t = _tag()
+    qid, _, _ = _row(db, "alpha", _fact(f"Pin base images by digest {t}"))
+    rec = Recorder()
+    status = gate.run(db, JEV_OFF, _job("alpha", qid), rec.judges, _no_backend)
+    assert status == "waiting_review"  # workspace publish mode is auto, still not published
+    assert rec.llm_calls == [f"Pin base images by digest {t}"] and rec.jev_calls == []
+    st, _, reasons, _, published_id, _ = _queue(db, qid)
+    assert (st, reasons, published_id) == ("waiting_review", [], None)
+    gid = gate.publish(db, qid, actor="owner")
+    assert _general_fact(db, gid)[1] == f"Pin base images by digest {t}"
+
+
+def test_jev_off_still_fails_on_the_llm_judge(db):
+    t = _tag()
+    qid, _, _ = _row(db, "alpha", _concept(f"oddtool{t}"))
+    rec = Recorder(llm=False)
+    assert gate.run(db, JEV_OFF, _job("alpha", qid), rec.judges, _no_backend) == "blocked"
+    assert [r["category"] for r in _queue(db, qid)[2]] == ["judge:llm"]
+    assert rec.jev_calls == []
+
+
+def test_jev_off_needs_no_jev_key_or_client(db, jev_instances):
+    t = _tag()
+    qid, _, _ = _row(db, "alpha", _fact(f"Keep runbooks next to the code {t}"))
+    backend = ClosingBackend(['{"ok": true}'])
+    status = gate.run(db, JEV_OFF, _job("alpha", qid), None, CountingFactory(backend))
+    assert status == "waiting_review"
+    assert jev_instances == [] and backend.closed == 1
+
+
+@pytest.mark.parametrize("value", ["no", "false", "0", "disabled"])
+def test_unknown_jev_switch_fails_closed(db, value):
+    t = _tag()
+    qid, _, _ = _row(db, "alpha", _fact(f"Switch value lesson {t}"))
+    rec = Recorder()
+    with pytest.raises(gate.Retry) as exc:
+        gate.run(db, {"TREANT_JEV": value}, _job("alpha", qid), rec.judges, _no_backend)
+    assert exc.value.category == "settings_invalid"
+    assert rec.llm_calls == rec.jev_calls == [] and _queue(db, qid)[0] == "pending"

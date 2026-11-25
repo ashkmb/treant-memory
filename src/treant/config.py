@@ -12,6 +12,18 @@ def jev_endpoint(env: Mapping[str, str]) -> tuple[str, str]:
     return env.get("TREANT_JEV_URL") or JEV_URL, env.get("TREANT_JEV_MODEL") or JEV_MODEL
 
 
+def jev_enabled(env: Mapping[str, str]) -> bool:
+    """Whether the gate asks Jev: ``TREANT_JEV`` is ``on`` (default) or ``off``.
+
+    Off means Jev is never called and nothing is published automatically: an item that passes
+    the rules and the LLM judge waits for the owner. Any other value is a ``ValueError``.
+    """
+    value = (env.get("TREANT_JEV") or "on").strip().lower()
+    if value not in ("on", "off"):
+        raise ValueError("TREANT_JEV must be on or off")
+    return value == "on"
+
+
 @dataclass(frozen=True)
 class Settings:
     database_url: str
@@ -25,6 +37,7 @@ class Settings:
     litellm_url: str | None = None
     jev_url: str = JEV_URL
     jev_model: str = JEV_MODEL
+    jev_enabled: bool = True
 
     @classmethod
     def from_env(cls, env: Mapping[str, str]) -> "Settings":
@@ -55,4 +68,5 @@ class Settings:
             litellm_url=env.get("TREANT_LITELLM_URL") or None,
             jev_url=jev_endpoint(env)[0],
             jev_model=jev_endpoint(env)[1],
+            jev_enabled=jev_enabled(env),
         )
