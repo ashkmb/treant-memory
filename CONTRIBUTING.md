@@ -1,9 +1,15 @@
 # Contributing
 
-Thank you for helping. treant-memory is source-available (see the README's licence section),
-and contributions are accepted under the [Contributor License Agreement](CLA.md): you keep the
-copyright in your work and give the licensor, Ashkan Kamyab, a licence to use and relicense
-it, including under commercial licences. Your first pull request asks you to sign it.
+Thank you for helping. treant-memory is source-available (see the README's licence section).
+
+**Pull requests are not open yet.** Code contributions will be accepted under the
+[Contributor License Agreement](CLA.md) once it is final; it is still a draft under legal
+review. Until then, please open an issue: bug reports, questions and ideas are welcome, and a
+pull request from outside will be closed without review.
+
+Under the CLA you keep the copyright in your work and give the licensor, Ashkan Kamyab, a
+licence to use and relicense it, including under commercial licences. When pull requests open,
+your first one will ask you to sign it.
 
 ## Before you start
 

@@ -401,7 +401,8 @@ uv sync --directory guard && uv run --directory guard ruff check && uv run --dir
 The database tests skip when that Postgres is not reachable. Each run creates its own database
 and role prefix and drops them afterwards. CI runs all three suites with the database.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) before you open a pull request. Report vulnerabilities
+Issues are welcome. Pull requests open once the contributor agreement is final; see
+[CONTRIBUTING.md](CONTRIBUTING.md). Report vulnerabilities
 privately as described in [SECURITY.md](SECURITY.md), not in public issues.
 
 ## Licence
@@ -415,7 +416,8 @@ and the `Required Notice` line that names the source.
 | Companies with fewer than 5 people (owners, employees and contractors together) | Free, also commercially, under the [Small Company Grant](SMALL-COMPANY-GRANT.md) |
 | Larger companies | Commercial licence from the licensor |
 
-Contributions are accepted under the [Contributor License Agreement](CLA.md).
+Contributions will be accepted under the [Contributor License Agreement](CLA.md) (draft, pending
+legal review; pull requests are not open yet).
 
 To ask for a commercial licence, open an issue titled "Commercial licence" in
 https://github.com/ashkmb/treant-memory or contact Ashkan Kamyab through https://ashkmb.com.
