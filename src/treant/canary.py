@@ -6,7 +6,10 @@ other workspace's markers through each read path. A returned fault is a triple
 ``(check_name, from_ws, to_ws)``:
 
 * ``search``, ``brief``, ``guard``, ``walk``: workspace ``from_ws`` saw ``to_ws``'s marker or item;
-* ``direct_select``: ``from_ws``'s role could read ``ws_<to_ws>``;
+* ``repo_facts``: workspace ``from_ws`` got a fact back from ``stale.repo_facts`` for a repo
+  named like one of ``to_ws``'s markers;
+* ``flag_stale``: ``stale.load_fact``, as ``from_ws``, found one of ``to_ws``'s canary facts;
+* ``direct_select``: ``from_ws``'s role could read ``ws_<to_ws>.facts`` or ``.stale_flags``;
 * ``general``: a marker of workspace ``to_ws`` sits in a ``general`` fact, node name or alias,
   or in a *published* ``general_queue`` item (markers in other queue rows are the gate
   working; see ``queue_held``)
@@ -26,10 +29,11 @@ from functools import partial
 import psycopg
 from psycopg import sql
 
-from treant import graph, jobs, names
+from treant import graph, jobs, names, stale
 from treant.brief import CANARY_NODE_TYPE, brief
 from treant.db import Database
 from treant.embed import Embedder
+from treant.errors import NotFound
 from treant.guard import GuardEnv, guard_check
 from treant.search import search
 from treant.tokens import TokenContext
@@ -140,23 +144,45 @@ def _check_walk(db, ctx, ids) -> bool:
     return any(ref[1] in ids for ref in reached)
 
 
+def _check_repo_facts(db, ctx, name) -> bool:
+    with db.ws_tx(ctx.workspace) as conn:
+        facts, _ = stale.repo_facts(conn, ctx.workspace, name)
+    return bool(facts)
+
+
+def _check_flag_stale(db, ctx, ids) -> bool:
+    """True when ``stale.load_fact`` (read-only here: a row lock, no write) finds any of ``ids``
+    in ``ctx.workspace``. An absent fact is the expected, isolated answer."""
+    with db.ws_tx(ctx.workspace) as conn:
+        for item_id in sorted(ids):
+            try:
+                stale.load_fact(conn, ctx.workspace, item_id)
+            except NotFound:
+                continue
+            return True
+    return False
+
+
 def _check_direct(db, a: str, b: str) -> bool:
-    """True on a fault: ``a``'s role could read ``ws_<b>``.
+    """True on a fault: ``a``'s role could read ``ws_<b>.facts`` or ``ws_<b>.stale_flags``.
 
     A read of ``a``'s own schema comes first and is not guarded: if the role switch or the
     schema is broken that raises (reported as ``error:direct_select``) instead of passing as
     "access denied".
     """
     own = sql.Identifier(names.ws_schema(a))
-    with db.ws_tx(a) as conn:
-        conn.execute(sql.SQL("SELECT 1 FROM {}.facts LIMIT 1").format(own)).fetchall()
     other = sql.Identifier(names.ws_schema(b))
-    try:
+    for table in ("facts", "stale_flags"):
+        read = sql.SQL("SELECT 1 FROM {}.{} LIMIT 1")
         with db.ws_tx(a) as conn:
-            conn.execute(sql.SQL("SELECT 1 FROM {}.facts LIMIT 1").format(other)).fetchall()
-    except psycopg.errors.InsufficientPrivilege:
-        return False
-    return True
+            conn.execute(read.format(own, sql.Identifier(table))).fetchall()
+        try:
+            with db.ws_tx(a) as conn:
+                conn.execute(read.format(other, sql.Identifier(table))).fetchall()
+        except psycopg.errors.InsufficientPrivilege:
+            continue
+        return True
+    return False
 
 
 def _embedded(db: Database, ws: str, ids: set[str]) -> bool:
@@ -235,6 +261,8 @@ def _pair(
             ("brief", partial(_any, markers, lambda m: _check_brief(db, ctx, m, m))),
             ("guard", partial(_any, markers, lambda m: _check_guard(db, ctx, m, m))),
             ("walk", lambda: _check_walk(db, ctx, ids)),
+            ("repo_facts", partial(_any, markers, lambda m: _check_repo_facts(db, ctx, m))),
+            ("flag_stale", lambda: _check_flag_stale(db, ctx, ids)),
         ]
     checks.append(("direct_select", lambda: _check_direct(db, a, b)))
     faults: list[Fault] = []

@@ -103,10 +103,23 @@ def test_each_check_helper_fires_on_own_canary(fresh_db):
     assert canary._check_brief(fresh_db, ctx, m, m)
     assert canary._check_guard(fresh_db, ctx, m, m)
     assert canary._check_walk(fresh_db, ctx, ids)
+    assert canary._check_repo_facts(fresh_db, ctx, m)
+    assert canary._check_flag_stale(fresh_db, ctx, ids)
     assert canary._check_direct(fresh_db, "beta", "beta")
 
 
-@pytest.mark.parametrize("label", ["search", "brief", "guard", "walk"])
+def test_stale_helpers_are_quiet_across_workspaces(fresh_db):
+    emb = FakeEmbedder()
+    _plant_all(emb=emb, db=fresh_db)
+    m, ids, _ = _self_args(fresh_db, emb, "beta")
+    ctx = TokenContext(token_id="canary", workspace="alpha", actions=frozenset({"read"}))
+    assert not canary._check_repo_facts(fresh_db, ctx, m)
+    assert not canary._check_flag_stale(fresh_db, ctx, ids)
+    with fresh_db.ws_tx("beta") as conn:
+        assert conn.execute("SELECT count(*) FROM ws_beta.stale_flags").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("label", ["search", "brief", "guard", "walk", "repo_facts", "flag_stale"])
 def test_check_reports_each_path_that_exposes_the_other_workspace(fresh_db, monkeypatch, label):
     emb = FakeEmbedder()
     _plant_all(emb=emb, db=fresh_db)
@@ -124,6 +137,17 @@ def test_direct_select_detects_a_real_grant(fresh, fresh_db):
     with psycopg.connect(admin, autocommit=True) as c:
         c.execute(sql.SQL("GRANT USAGE ON SCHEMA ws_beta TO {}").format(role))
         c.execute(sql.SQL("GRANT SELECT ON ws_beta.facts TO {}").format(role))
+    assert canary.check(fresh_db, emb) == [("direct_select", "alpha", "beta")]
+
+
+def test_direct_select_detects_a_stale_flags_grant(fresh, fresh_db):
+    admin, _, prefix = fresh
+    emb = FakeEmbedder()
+    _plant_all(emb=emb, db=fresh_db)
+    role = sql.Identifier(names.ws_role(prefix, "alpha"))
+    with psycopg.connect(admin, autocommit=True) as c:
+        c.execute(sql.SQL("GRANT USAGE ON SCHEMA ws_beta TO {}").format(role))
+        c.execute(sql.SQL("GRANT SELECT ON ws_beta.stale_flags TO {}").format(role))
     assert canary.check(fresh_db, emb) == [("direct_select", "alpha", "beta")]
 
 
