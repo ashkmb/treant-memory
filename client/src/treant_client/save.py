@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import hashlib
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 
 from treant_client import config as _config
 from treant_client import log
+from treant_client import stale as _stale
 from treant_client.keychain import get_token
 from treant_client.mcp_http import TreantError, TreantSession
 from treant_client.scrub import sanitize
@@ -119,15 +121,17 @@ def save_worker(
     """Save one session as a Treant revision. Returns a status string, logs only that."""
     t0 = time.monotonic()
     ws: str | None = None
+    conf = None  # the loaded config, for the stale check after a save
 
     def run() -> str:
-        nonlocal ws
+        nonlocal ws, conf
         if not isinstance(session_id, str) or not 0 < len(session_id) <= MAX_SESSION_ID:
             return "failed_invalid"
         try:
             c = cfg if cfg is not None else _config.load_config()
         except Exception:  # noqa: BLE001
             return "failed_config"
+        conf = c
         if c.url is None:
             return "skipped_no_url"
         ws = resolve(cwd, c)
@@ -166,4 +170,9 @@ def save_worker(
         trigger=trigger,
         duration_ms=int((time.monotonic() - t0) * 1000),
     )
+    if status in ("saved", "saved_unsure"):
+        with contextlib.suppress(Exception):  # the check never changes the save's status
+            _stale.check_after_save(
+                cwd, conf, token_getter=token_getter, session_factory=session_factory
+            )
     return status

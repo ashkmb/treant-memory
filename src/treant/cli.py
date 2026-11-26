@@ -393,6 +393,61 @@ def _cmd_pairs(args: argparse.Namespace, env: Mapping[str, str]) -> int:
     return 0
 
 
+def _stale_list(db: Database, args: argparse.Namespace) -> int:
+    for r in browse.stale_flags(db, args.workspace):
+        tokens = ",".join(m["token"] for m in r["missing"])
+        when = r["created_at"].strftime("%Y-%m-%d %H:%M")
+        print(f"{r['id']}\t{r['fact_id']}\t{r['repo']}\t{r['commit'][:7]}\t{tokens}\t{when}")
+    return 0
+
+
+def _stale_show(db: Database, args: argparse.Namespace) -> int:
+    r = browse.stale_flag(db, args.workspace, args.id)
+    if r is None:
+        print("error: stale flag not found", file=sys.stderr)  # show also shows resolved flags
+        return 1
+    print(r["text"])
+    print(f"repo: {r['repo']} at {r['commit'][:7]}")
+    for m in r["missing"]:
+        removed = m.get("commit")
+        subject = m.get("subject")
+        if removed:
+            how = f"removed in {removed[:7]}" + (f": {subject}" if subject else "")
+        else:
+            how = "not found"
+        print(f"missing: {m['token']} ({how})")
+    print(f"status: {r['resolution'] or 'open'}")
+    return 0
+
+
+def _stale_act(db: Database, args: argparse.Namespace) -> int:
+    act = owner.keep_stale if args.sub == "keep" else owner.retract_stale
+    try:
+        act(db, ACTOR, args.workspace, args.id)
+    except owner.Refused as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    print(f"stale flag {args.id} {'kept' if args.sub == 'keep' else 'retracted'}")
+    return 0
+
+
+def _cmd_stale(args: argparse.Namespace, env: Mapping[str, str]) -> int:
+    names.validate_workspace(args.workspace)
+    s = _settings(env, _DB)
+    handler = {
+        "list": _stale_list,
+        "show": _stale_show,
+        "keep": _stale_act,
+        "retract": _stale_act,
+    }[args.sub]
+    with Database(s.database_url, s.role_prefix) as db:
+        try:
+            return handler(db, args)
+        except InvalidInput:
+            print("error: workspace not available", file=sys.stderr)
+            return 1
+
+
 def _jobs_retry(db: Database, args: argparse.Namespace) -> int:
     if args.id is None and args.status is None:
         print("error: give a job id or --status dead", file=sys.stderr)
@@ -736,6 +791,13 @@ def _parser() -> argparse.ArgumentParser:
         c = sub.add_parser(name).add_subparsers(dest="sub", required=True).add_parser("list")
         c.add_argument("workspace")
         c.set_defaults(fn=_cmd_pairs)
+    st = sub.add_parser("stale").add_subparsers(dest="sub", required=True)
+    for name in ("list", "show", "keep", "retract"):
+        c = st.add_parser(name)
+        c.add_argument("workspace")
+        if name != "list":
+            c.add_argument("id", type=int)
+        c.set_defaults(fn=_cmd_stale)
     jb = sub.add_parser("jobs").add_subparsers(dest="sub", required=True)
     c = jb.add_parser("list")
     c.add_argument("--status")

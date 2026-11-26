@@ -40,6 +40,25 @@ alter table {schema}.facts add column if not exists wait_concept text;
 -- Number of spans the scrubber removed from the save.
 alter table {schema}.revisions add column if not exists removed int not null default 0;
 
+-- A client's note that a fact names things a repository no longer has. Only the owner or an
+-- agent through update_fact/retract changes the fact; a kept flag with the same text_sha256
+-- suppresses new flags until the text changes.
+create table if not exists {schema}.stale_flags (
+    id bigserial primary key,
+    fact_id uuid not null references {schema}.facts (id),
+    repo text not null,
+    commit text not null,
+    missing jsonb not null,
+    fact_version int not null,
+    text_sha256 text not null,
+    created_at timestamptz not null default now(),
+    resolved_at timestamptz,
+    resolution text check (resolution in ('kept', 'retracted', 'superseded-by-edit')),
+    unique (fact_id, commit)
+);
+create unique index if not exists stale_flags_one_open
+    on {schema}.stale_flags (fact_id) where resolved_at is null;
+
 grant select, insert, update, delete on all tables in schema {schema} to {role};
 revoke insert, update, delete on {schema}.instance_names from {role};
 grant usage, select on all sequences in schema {schema} to {role};

@@ -40,6 +40,17 @@ One token per workspace, kept only in the macOS Keychain (service `treant`, acco
   warnings lookup), Kiro blocks every time with no retry. See `../guard/README.md` for rules,
   targets and `treant-guard check-config`.
 - `SessionEnd` / `PreCompact`: a detached worker summarizes, scrubs and saves the session.
+- After a save: the stale check runs for the session's git repository when its `HEAD` moved
+  since the last check (memo `~/.local/state/treant/stale-heads.json`). It asks the server
+  for the repository's facts (at most 200 facts / 30 s per run), looks up the file paths and
+  code names each fact mentions with `git ls-tree` / `git grep -q` at `HEAD`, and flags a fact whose
+  tokens are gone for the owner to keep or retract. It sends only tokens taken from the fact
+  text plus commit ids and subjects, never file contents, and needs a token with `update` to
+  flag. Anything uncertain counts as present; a weak token (a bare file name such as
+  `README.md`, a CamelCase or dotted name such as `GitHub` or `os.path`) counts as missing only
+  when `git log` finds the commit that removed it. Run it by hand with
+  `treant-client check-stale [--repo PATH] [--dry-run]` (`--dry-run` prints what would be
+  flagged; the by-hand run ignores the memo).
 - launchd, every 10 minutes: `kiro-sweep` saves Kiro conversations idle for 30 minutes and
   last updated after install (watermark `~/.local/state/treant/kiro-since`; write `0` to backfill).
   It reads Kiro's old `conversations_v2` table and the v3 engine's `~/.kiro/sessions/` folders.

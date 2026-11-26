@@ -1,6 +1,6 @@
 """Memory pages: browse nodes, search, node detail, fact edit/retract/restore, fact duplicates,
-merges, graph, conflicts, sessions. A login and CSRF are enough, except saving or restoring
-``general`` text over the rules (``force``), which needs a recent login."""
+merges, graph, conflicts, stale flags, sessions. A login and CSRF are enough, except saving or
+restoring ``general`` text over the rules (``force``), which needs a recent login."""
 
 import re
 from collections.abc import Callable
@@ -375,6 +375,13 @@ def conflicts(request: Request, deps: Any, user: str) -> Response:
 
 @page()
 @_mapped
+def stale(request: Request, deps: Any, user: str) -> Response:
+    ws = request.path_params["ws"]
+    return _render(request, deps, "stale.html", {"ws": ws, "rows": browse.stale_flags(deps.db, ws)})
+
+
+@page()
+@_mapped
 def sessions(request: Request, deps: Any, user: str) -> Response:
     ws = request.path_params["ws"]
     offset = page_offset(request)
@@ -435,6 +442,26 @@ def conflict_dismiss(request: Request, deps: Any, user: str, form: Any) -> Respo
     )
 
 
+@action(back="/memory/{ws}/stale")
+def stale_keep(request: Request, deps: Any, user: str, form: Any) -> Response:
+    return _resolve(
+        request,
+        lambda ws, i: owner.keep_stale(deps.db, actor(user), ws, i),
+        "kept",
+        "/memory/{ws}/stale",
+    )
+
+
+@action(back="/memory/{ws}/stale")
+def stale_retract(request: Request, deps: Any, user: str, form: Any) -> Response:
+    return _resolve(
+        request,
+        lambda ws, i: owner.retract_stale(deps.db, actor(user), ws, i),
+        "retracted",
+        "/memory/{ws}/stale",
+    )
+
+
 def routes(deps: Any) -> list[BaseRoute]:
     post = ["POST"]
     return [
@@ -456,5 +483,8 @@ def routes(deps: Any) -> list[BaseRoute]:
         Route("/memory/{ws}/merges/{flag}/dismiss", merge_dismiss, methods=post),
         Route("/memory/{ws}/conflicts", conflicts),
         Route("/memory/{ws}/conflicts/{flag}/dismiss", conflict_dismiss, methods=post),
+        Route("/memory/{ws}/stale", stale),
+        Route("/memory/{ws}/stale/{flag}/keep", stale_keep, methods=post),
+        Route("/memory/{ws}/stale/{flag}/retract", stale_retract, methods=post),
         Route("/memory/{ws}/sessions", sessions),
     ]

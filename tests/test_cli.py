@@ -907,3 +907,52 @@ def test_purge_gives_up_on_a_held_lock(fresh, fresh_db, monkeypatch):
             migrate.purge_workspace(admin, prefix, "beta")
         assert cli.main(["workspace", "purge", "beta", "--confirm", "beta"]) == 1
     assert _exists(admin, "ws_beta", f"{prefix}_ws_beta") == (True, True)
+
+
+def test_stale_list_show_keep_retract(fresh, fresh_db, capsys):
+    from treant import graph, stale
+
+    missing = [
+        {"token": "old_name.py", "commit": "abc1234", "subject": "rename old_name to new_name"}
+    ]
+    with fresh_db.ws_tx("alpha") as conn:
+        node = graph.add_node(conn, "alpha", "instance", "repo", "demo")
+        text = "entry point is `old_name.py`"
+        fact = graph.add_fact(conn, "alpha", "fact", text, node)
+        fid = stale.flag(conn, "alpha", fact, "demo", "abc1234" + "0" * 33, missing, [])["flag_id"]
+    assert cli.main(["stale", "list", "alpha"]) == 0
+    line = capsys.readouterr().out.strip().split("\t")
+    assert line[:5] == [str(fid), str(fact), "demo", "abc1234", "old_name.py"]
+    assert len(line[5]) == len("2026-01-01 00:00")
+    assert cli.main(["stale", "show", "alpha", str(fid)]) == 0
+    out = capsys.readouterr().out
+    assert text in out
+    assert "missing: old_name.py (removed in abc1234: rename old_name to new_name)" in out
+    assert cli.main(["stale", "keep", "alpha", str(fid)]) == 0
+    assert cli.main(["stale", "keep", "alpha", str(fid)]) == 1
+    assert "error: stale flag not found or resolved" in capsys.readouterr().err
+    assert cli.main(["stale", "retract", "alpha", str(fid)]) == 1
+    capsys.readouterr()
+    assert cli.main(["stale", "show", "alpha", "999999"]) == 1
+    err = capsys.readouterr().err
+    assert "error: stale flag not found\n" in err and "resolved" not in err
+    assert cli.main(["stale", "list", "general"]) == 2
+
+
+def test_stale_command_arguments_need_no_database(capsys):
+    for argv in (["stale"], ["stale", "keep", "alpha"], ["stale", "keep", "alpha", "x"]):
+        with pytest.raises(SystemExit) as e:
+            cli.main(argv)
+        assert e.value.code == 2
+    with pytest.raises(SystemExit) as e:
+        cli.main(["stale", "list", "--help"])
+    assert e.value.code == 0
+
+
+def test_stale_show_of_an_unknown_id_says_not_found(capsys, monkeypatch):
+    import argparse
+
+    monkeypatch.setattr(cli.browse, "stale_flag", lambda db, ws, fid: None)
+    args = argparse.Namespace(workspace="alpha", id=999999)
+    assert cli._stale_show(None, args) == 1
+    assert capsys.readouterr().err == "error: stale flag not found\n"

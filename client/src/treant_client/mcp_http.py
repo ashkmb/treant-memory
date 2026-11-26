@@ -15,12 +15,19 @@ PROTOCOL_VERSION = "2025-06-18"
 MAX_RESPONSE = 16 * 1024 * 1024  # bytes; a larger reply is a protocol error, not a memory spike
 
 
-class TreantError(Exception):
-    """category: unreachable | timeout | http_<code> | protocol | tool_error"""
+TOOL_ERROR_DETAILS = ("forbidden", "not found", "invalid input", "internal error")
 
-    def __init__(self, category: str, message: str = ""):
+
+class TreantError(Exception):
+    """category: unreachable | timeout | http_<code> | protocol | tool_error
+
+    detail: for tool_error, the server's ``error`` when it is one of TOOL_ERROR_DETAILS,
+    else None. It never enters the message."""
+
+    def __init__(self, category: str, message: str = "", detail: str | None = None):
         super().__init__(f"treant {category}" + (f": {message}" if message else ""))
         self.category = category
+        self.detail = detail
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -186,5 +193,6 @@ class TreantSession(RawSession):
                 "tool_error" if result.get("isError") else "protocol", "no usable tool result"
             )
         if "error" in payload or result.get("isError"):
-            raise TreantError("tool_error")
+            err = payload.get("error")
+            raise TreantError("tool_error", detail=err if err in TOOL_ERROR_DETAILS else None)
         return payload

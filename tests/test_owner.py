@@ -471,3 +471,62 @@ def test_git_host_targets_are_stored_lowercased(fresh_db):
     owner.remove_target(fresh_db, "cli", "alpha", "git_host", "GIT.example.com")
     with fresh_db.ws_tx("alpha") as c:
         assert c.execute("SELECT count(*) FROM ws_alpha.targets").fetchone()[0] == 0
+
+
+def _stale_flag(db, text="uses `old_name.py` here"):
+    from treant import graph, stale
+
+    missing = [{"token": "old_name.py", "commit": "abc1234", "subject": "rename old_name"}]
+    with db.ws_tx("alpha") as c:
+        node = graph.add_node(c, "alpha", "instance", "repo", "demo")
+        fid = graph.add_fact(c, "alpha", "fact", text, node)
+        flag = stale.flag(c, "alpha", fid, "demo", "a" * 40, missing, [])["flag_id"]
+    return str(fid), flag
+
+
+def _stale_state(db, flag):
+    with db.admin_tx() as c:
+        return c.execute(
+            "SELECT resolution, resolved_at IS NOT NULL FROM ws_alpha.stale_flags WHERE id = %s",
+            (flag,),
+        ).fetchone()
+
+
+def test_keep_stale_resolves_and_audits(fresh_db):
+    _fid, flag = _stale_flag(fresh_db)
+    owner.keep_stale(fresh_db, "cli", "alpha", flag)
+    assert _stale_state(fresh_db, flag) == ("kept", True)
+    assert _audit_rows(fresh_db, "stale.keep")[-1] == (
+        "cli",
+        {"workspace": "alpha", "flag_id": flag},
+    )
+    with pytest.raises(owner.Refused, match="stale flag not found or resolved"):
+        owner.keep_stale(fresh_db, "cli", "alpha", flag)
+
+
+def test_retract_stale_retracts_the_fact(fresh_db):
+    fid, flag = _stale_flag(fresh_db)
+    owner.retract_stale(fresh_db, "dashboard:a", "alpha", flag)
+    with fresh_db.admin_tx() as c:
+        status = c.execute("SELECT status FROM ws_alpha.facts WHERE id = %s", (fid,)).fetchone()[0]
+    assert status == "retracted"
+    assert _stale_state(fresh_db, flag) == ("retracted", True)
+    actor, detail = _audit_rows(fresh_db, "stale.retract")[-1]
+    assert actor == "dashboard:a"
+    assert detail == {"workspace": "alpha", "flag_id": flag, "fact_id": fid}
+    assert "old_name" not in str(detail)
+    with pytest.raises(owner.Refused, match="stale flag not found or resolved"):
+        owner.retract_stale(fresh_db, "cli", "alpha", flag)
+
+
+def test_stale_actions_refuse_general_and_edited_flags(fresh_db):
+    fid, flag = _stale_flag(fresh_db)
+    for act in (owner.keep_stale, owner.retract_stale):
+        with pytest.raises(InvalidInput, match="unknown namespace"):
+            act(fresh_db, "cli", "general", flag)
+    owner.edit_fact(fresh_db, "cli", "alpha", fid, "uses `new_name.py` now", None)
+    for act in (owner.keep_stale, owner.retract_stale):
+        with pytest.raises(owner.Refused, match="stale flag not found or resolved"):
+            act(fresh_db, "cli", "alpha", flag)
+    assert _stale_state(fresh_db, flag) == ("superseded-by-edit", True)
+    assert _audit_rows(fresh_db, "stale.keep") == []

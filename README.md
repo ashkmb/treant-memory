@@ -76,7 +76,7 @@ Seen from a coding agent's side of the terminal, four things go wrong without it
 ### Memory that carries over
 
 - **MCP tools:** `save_session`, `search`, `brief`, `warnings`, `update_fact`, `retract`,
-  `report_mistake` (plus the deprecated `guard_check`).
+  `report_mistake`, `repo_facts`, `flag_stale` (plus the deprecated `guard_check`).
 - **Typed saves:** journal, facts, decisions, lessons, dead ends, procedures, changes, open threads,
   preferences, warnings and client memory.
 - **Hybrid search:** cosine similarity over the workspace's and `general`'s vectors, plus facts

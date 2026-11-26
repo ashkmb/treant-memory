@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty %}
+{% block title %}Stale {{ ws }}{% endblock %}
+{% block content %}
+<div class="breadcrumbs text-sm"><ul><li><a href="/memory">Memory</a></li><li><a href="/memory/{{ ws | urlencode }}">{{ ws }}</a></li><li>Stale</li></ul></div>
+<h1 class="page-title">Stale: {{ ws }}</h1>
+<div class="card bg-base-100 shadow-sm overflow-x-auto">
+  <table class="table">
+    <thead><tr><th>Fact</th><th>Missing</th><th>Commit</th><th>Flagged</th><th></th></tr></thead>
+    <tbody>
+    {% for s in rows %}
+      <tr>
+        <td class="text-block">{{ s.text | short }}
+          <a class="text-xs" href="/memory/{{ ws | urlencode }}/fact/{{ s.fact_id | urlencode }}/history">edit</a></td>
+        <td class="text-block">
+          {% for m in s.missing %}
+          <div><code>{{ m.token }}</code>
+            {% if m.commit %}<span class="text-xs opacity-70">removed in {{ m.commit }}{% if m.subject %}: {{ m.subject }}{% endif %}</span>
+            {% else %}<span class="text-xs opacity-70">not found</span>{% endif %}</div>
+          {% endfor %}
+        </td>
+        <td class="whitespace-nowrap text-xs">{{ s.repo }} @ {{ (s.commit or "")[:7] }}</td>
+        <td class="whitespace-nowrap text-xs opacity-70">{{ s.created_at | when }}</td>
+        <td class="whitespace-nowrap">
+          <form class="inline" method="post" action="/memory/{{ ws | urlencode }}/stale/{{ s.id }}/keep">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-xs">Still true</button>
+          </form>
+          <form class="inline" method="post" action="/memory/{{ ws | urlencode }}/stale/{{ s.id }}/retract">
+            <input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="btn btn-xs btn-error">Retract</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      {{ empty(5, "No open stale flags.") }}
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -14,7 +14,7 @@ from typing import Any
 from psycopg import sql
 from psycopg.types.json import Jsonb
 
-from treant import gate, gate_rules, graph, jobs, names, sessions, settings, tokens
+from treant import gate, gate_rules, graph, jobs, names, sessions, settings, stale, tokens
 from treant.db import Database
 from treant.errors import InvalidInput
 from treant.scrub import scrub
@@ -505,6 +505,13 @@ def merge_facts(
         )
 
 
+_RESOLVE_LABELS = {
+    "merge_flags": "merge flag",
+    "conflicts": "conflict",
+    "stale_flags": "stale flag",
+}
+
+
 def _resolve(conn: Any, ws: str, table: str, row_id: int, resolution: str, cols: str) -> tuple:
     row = conn.execute(
         sql.SQL(
@@ -514,7 +521,7 @@ def _resolve(conn: Any, ws: str, table: str, row_id: int, resolution: str, cols:
         (resolution, row_id),
     ).fetchone()
     if row is None:
-        label = "merge flag" if table == "merge_flags" else "conflict"
+        label = _RESOLVE_LABELS[table]
         raise Refused(f"{label} not found or resolved")
     return row
 
@@ -567,3 +574,36 @@ def dismiss_conflict(db: Database, actor: str, ws: str, conflict_id: int) -> Non
     with _graph_unit(db, ws) as conn:
         _resolve(conn, ws, "conflicts", conflict_id, "dismissed", "id")
         audit(conn, actor, "conflict.dismiss", {"workspace": ws, "conflict_id": conflict_id})
+
+
+def _settle_edited(db: Database, ws: str) -> None:
+    """Save ``superseded-by-edit`` for edited facts in a transaction of its own, so the refusal
+    of an action on such a flag does not roll the resolution back."""
+    with _graph_unit(db, ws) as conn:
+        stale.resolve_edited(conn, ws)
+
+
+def keep_stale(db: Database, actor: str, ws: str, flag_id: int) -> None:
+    """The owner says the fact is still right: resolve its stale flag as ``kept``."""
+    if ws == "general":
+        raise InvalidInput("unknown namespace")
+    _settle_edited(db, ws)
+    with _graph_unit(db, ws) as conn:
+        _resolve(conn, ws, "stale_flags", flag_id, "kept", "id")
+        audit(conn, actor, "stale.keep", {"workspace": ws, "flag_id": flag_id})
+
+
+def retract_stale(db: Database, actor: str, ws: str, flag_id: int) -> None:
+    """Retract the flagged fact and resolve its flag as ``retracted``. No fact text is audited."""
+    if ws == "general":
+        raise InvalidInput("unknown namespace")
+    _settle_edited(db, ws)
+    with _graph_unit(db, ws) as conn:
+        (fact_id,) = _resolve(conn, ws, "stale_flags", flag_id, "retracted", "fact_id")
+        graph.retract(conn, ws, "fact", str(fact_id))
+        audit(
+            conn,
+            actor,
+            "stale.retract",
+            {"workspace": ws, "flag_id": flag_id, "fact_id": str(fact_id)},
+        )

@@ -51,7 +51,7 @@ def test_end_to_end_save_then_search_over_http(db, live_server):
             assert descs["guard_check"].startswith("Deprecated")
             assert tools == {
                 "save_session", "search", "brief", "guard_check", "warnings",
-                "update_fact", "retract", "report_mistake",
+                "update_fact", "retract", "report_mistake", "repo_facts", "flag_stale",
             }  # fmt: skip
             assert c.instructions == INSTRUCTIONS
             saved = await c.call_tool(

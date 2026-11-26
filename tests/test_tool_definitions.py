@@ -18,6 +18,8 @@ TOOLS = {
     "retract": (False, True),
     "report_mistake": (False, False),
     "guard_check": (True, False),
+    "repo_facts": (True, False),
+    "flag_stale": (False, False),
 }
 
 MINIMAL_ARGS = {
@@ -29,6 +31,13 @@ MINIMAL_ARGS = {
     "retract": {"fact_id": "00000000-0000-0000-0000-000000000000"},
     "report_mistake": {"text": "x"},
     "guard_check": {"command": "ls", "cwd": "/tmp"},
+    "repo_facts": {"repo": "demo"},
+    "flag_stale": {
+        "fact_id": "00000000-0000-0000-0000-000000000000",
+        "repo": "demo",
+        "commit": "abc1234",
+        "missing": [{"token": "old_name.py"}],
+    },
 }
 
 
@@ -66,6 +75,12 @@ async def test_server_reports_name_and_version():
 async def test_guard_check_is_marked_deprecated():
     tools = await _tools(build_listing_mcp())
     assert tools["guard_check"].description.startswith("Deprecated")
+
+
+@pytest.mark.anyio
+async def test_search_names_the_in_doubt_key():
+    tools = await _tools(build_listing_mcp())
+    assert "`in_doubt`" in tools["search"].description
 
 
 @pytest.mark.anyio
