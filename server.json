@@ -3,7 +3,7 @@
   "name": "io.github.ashkmb/treant-memory",
   "title": "Treant",
   "description": "Self-hosted graph memory for AI coding agents: Postgres + pgvector, isolated workspaces.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "repository": {
     "url": "https://github.com/ashkmb/treant-memory",
     "source": "github"
@@ -12,7 +12,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/ashkmb/treant-memory:0.1.0",
+      "identifier": "ghcr.io/ashkmb/treant-memory:0.1.1",
       "transport": {
         "type": "streamable-http",
         "url": "http://localhost:8000/mcp",

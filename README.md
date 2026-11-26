@@ -38,7 +38,7 @@ graph that the next session can search.
 </p>
 <p align="center"><sub>A real run against the quick start, with distillation on a local 7B model. The agent's MCP calls come from <a href="docs/demo/demo.py">docs/demo/demo.py</a>; <a href="docs/demo/demo.tape">docs/demo/demo.tape</a> re-records it.</sub></p>
 
-Status: source-available, early (0.1.0). The Python package and the CLI are called `treant`.
+Status: source-available, early (0.1.1). The Python package and the CLI are called `treant`.
 
 ## Why Treant
 
@@ -220,13 +220,13 @@ docker compose run --rm admin token create personal --label laptop --actions cre
 
 The token is printed once and not stored.
 
-Compose pulls the published image `ghcr.io/ashkmb/treant-memory:0.1.0` (linux/amd64 and
+Compose pulls the published image `ghcr.io/ashkmb/treant-memory:0.1.1` (linux/amd64 and
 linux/arm64). To run your own changes instead, run `docker compose build` first: it builds the
 same tag from your checkout. `scripts/quickstart-smoke.sh` runs all of the above plus a save and
 a search over MCP; CI runs it on every push.
 
 MCP directories that list a server's tools can run `docker run --rm -i
-ghcr.io/ashkmb/treant-memory:0.1.0 serve --list-tools`: it speaks MCP over stdio, needs no
+ghcr.io/ashkmb/treant-memory:0.1.1 serve --list-tools`: it speaks MCP over stdio, needs no
 database or settings, and refuses every tool call.
 
 `compose.yml` runs `postgres` (`pgvector/pgvector:0.8.7-pg17-bookworm`), `embed` (llama.cpp

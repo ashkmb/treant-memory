@@ -95,7 +95,7 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    image: treant:0.1.0
+    image: treant:0.1.1
     <<: *hardening
     command: ["serve"]
     depends_on:
@@ -115,7 +115,7 @@ services:
     # Healthcheck: the image's own (TCP connect to the TREANT_BIND port).
 
   worker:
-    image: treant:0.1.0
+    image: treant:0.1.1
     pull_policy: never
     <<: *hardening
     command: ["worker"]
@@ -134,7 +134,7 @@ services:
       disable: true
 
   dashboard:
-    image: treant:0.1.0
+    image: treant:0.1.1
     pull_policy: never
     <<: *hardening
     command: ["dashboard"]
@@ -161,7 +161,7 @@ services:
 
   # One-shot owner CLI. Never started by `up`; run it through deploy/scripts/treant.
   admin:
-    image: treant:0.1.0
+    image: treant:0.1.1
     pull_policy: never
     profiles: [admin]
     <<: *hardening
