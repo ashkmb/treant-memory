@@ -12,7 +12,7 @@ from typing import Any, Literal
 import psycopg
 from psycopg import sql
 
-from treant import names
+from treant import names, stale
 from treant.db import Database
 from treant.embed import Embedder, EmbedderUnavailable
 from treant.tokens import TokenContext
@@ -194,6 +194,12 @@ def search(
     limit = max(1, min(int(limit), MAX_LIMIT))
     with db.ws_tx(ctx.workspace) as conn:
         mode, raws = _search_tx(conn, ctx, query, limit, embedder)
+        ws = names.ws_schema(ctx.workspace)
+        fact_ids = [r.hit["id"] for r in raws if r.schema == ws and r.hit["kind"] == "fact"]
+        notes = stale.open_markers(conn, ctx.workspace, fact_ids)
+        for r in raws:
+            if r.schema == ws and r.hit["kind"] == "fact" and r.hit["id"] in notes:
+                r.hit["in_doubt"] = notes[r.hit["id"]]
     allowed = {names.ws_schema(ctx.workspace), "general"}
     clean = [r for r in raws if r.schema in allowed]
     faults = len(raws) - len(clean)

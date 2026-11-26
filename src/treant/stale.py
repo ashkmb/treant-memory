@@ -100,6 +100,11 @@ def marker(missing: list[dict], commit: str) -> str:
     return f"(in doubt: {what} not found at {commit[:7]})"
 
 
+def annotate(text: str, note: str | None) -> str:
+    """A fact line with its in-doubt note appended, or unchanged without one."""
+    return text if not note else f"{text} {note}"
+
+
 def _schema(workspace: str) -> sql.Identifier:
     try:
         return sql.Identifier(names.ws_schema(workspace))
@@ -224,3 +229,21 @@ def flag(
     if row is None:
         return {"flagged": False, "reason": "exists"}
     return {"flagged": True, "flag_id": row[0]}
+
+
+def open_markers(conn: psycopg.Connection, workspace: str, fact_ids: list[str]) -> dict[str, str]:
+    """Fact id -> in-doubt marker, for the newest open flag of each current fact whose version
+    still equals the flagged one. Read-only: an edited fact loses its marker at once, before
+    ``resolve_edited`` persists the resolution."""
+    ids = [str(uuid.UUID(str(i))) for i in dict.fromkeys(fact_ids)]
+    if not ids:
+        return {}
+    query = sql.SQL(
+        "SELECT DISTINCT ON (sf.fact_id) sf.fact_id, sf.commit, sf.missing "
+        "FROM {s}.stale_flags sf JOIN {s}.facts f ON f.id = sf.fact_id "
+        "WHERE sf.fact_id = ANY(%s::uuid[]) AND sf.resolved_at IS NULL "
+        "AND f.status = 'current' AND sf.fact_version = f.version "
+        "ORDER BY sf.fact_id, sf.id DESC"
+    ).format(s=_schema(workspace))
+    rows = conn.execute(query, (ids,)).fetchall()
+    return {str(fid): marker(missing, commit) for fid, commit, missing in rows if missing}

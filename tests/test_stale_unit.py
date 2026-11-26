@@ -139,3 +139,12 @@ def test_text_sha256():
         "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     )
     assert stale.text_sha256("a") != stale.text_sha256("b")
+
+
+def test_annotate_appends_the_note_after_one_space():
+    note = stale.marker([{"token": "old_name.py"}], "abc1234" + "0" * 33)
+    assert stale.annotate("entry is `old_name.py`", note) == (
+        "entry is `old_name.py` (in doubt: old_name.py not found at abc1234)"
+    )
+    assert stale.annotate("entry is `old_name.py`", None) == "entry is `old_name.py`"
+    assert stale.annotate("plain", "") == "plain"

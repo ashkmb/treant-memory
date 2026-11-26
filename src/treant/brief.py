@@ -11,7 +11,7 @@ threads sections; the repo section still shows them when the canary is asked for
 import psycopg
 from psycopg import sql
 
-from treant import names
+from treant import names, stale
 from treant.db import Database
 from treant.tokens import TokenContext
 from treant.walk import NodeRef, walk
@@ -25,14 +25,16 @@ _FACTS_PER_NODE = 20
 CANARY_NODE_TYPE = "canary"  # node type canary.plant uses
 
 
-def _facts(conn: psycopg.Connection, ws: str, ftype: str, newest_first: bool) -> list[str]:
+def _facts(conn: psycopg.Connection, workspace: str, ftype: str, newest_first: bool) -> list[str]:
     order = "DESC" if newest_first else "ASC"
     query = sql.SQL(
-        "SELECT f.text FROM {s}.facts f LEFT JOIN {s}.nodes n ON n.id = f.node_id "
+        "SELECT f.id::text, f.text FROM {s}.facts f LEFT JOIN {s}.nodes n ON n.id = f.node_id "
         "WHERE f.status = 'current' AND f.type = %s AND n.type IS DISTINCT FROM %s "
         "ORDER BY f.created_at {o}, f.id"
-    ).format(s=sql.Identifier(ws), o=sql.SQL(order))
-    return [r[0] for r in conn.execute(query, (ftype, CANARY_NODE_TYPE)).fetchall()]
+    ).format(s=sql.Identifier(names.ws_schema(workspace)), o=sql.SQL(order))
+    rows = conn.execute(query, (ftype, CANARY_NODE_TYPE)).fetchall()
+    notes = stale.open_markers(conn, workspace, [r[0] for r in rows])
+    return [stale.annotate(text, notes.get(fid)) for fid, text in rows]
 
 
 def _cut(text: str, cap: int) -> str:
@@ -89,17 +91,21 @@ def _repo_section(
         lines.append(f"### {_one_line(node[0])} ({_one_line(node[1])})")
         facts = conn.execute(
             sql.SQL(
-                "SELECT type, text FROM {s}.facts WHERE node_id = %s AND status = 'current' "
+                "SELECT id::text, type, text FROM {s}.facts WHERE node_id = %s AND status = 'current' "
                 "AND NOT (type = ANY(%s)) ORDER BY created_at DESC, id LIMIT %s"
             ).format(s=schema),
             (node_id, list(skip), _FACTS_PER_NODE),
         ).fetchall()
-        lines += [f"- [{t}] {text}" for t, text in facts]
+        notes = (
+            stale.open_markers(conn, workspace, [fid for fid, _, _ in facts])
+            if space == "ws"
+            else {}
+        )
+        lines += [f"- [{t}] {stale.annotate(text, notes.get(fid))}" for fid, t, text in facts]
     return f"## {_one_line(repo)}\n" + "\n".join(lines)
 
 
 def brief(db: Database, ctx: TokenContext, repo: str | None, repo_only: bool = False) -> str:
-    ws = names.ws_schema(ctx.workspace)
     if repo_only:
         if not repo:
             return ""
@@ -107,8 +113,8 @@ def brief(db: Database, ctx: TokenContext, repo: str | None, repo_only: bool = F
             return _cut(_repo_section(conn, ctx.workspace, repo, _REPO_ONLY_SKIP), CAP)
     with db.ws_tx(ctx.workspace) as conn:
         parts = [
-            _section("Warnings", _facts(conn, ws, "warning", False)),
-            _section("Open threads", _facts(conn, ws, "open_thread", True)),
+            _section("Warnings", _facts(conn, ctx.workspace, "warning", False)),
+            _section("Open threads", _facts(conn, ctx.workspace, "open_thread", True)),
         ]
         if repo:
             parts.append(_repo_section(conn, ctx.workspace, repo))

@@ -4,7 +4,7 @@ import psycopg
 import pytest
 from fakes import FakeEmbedder
 
-from treant import auth, graph, stale, tools
+from treant import auth, brief, graph, search, stale, tools
 from treant.tokens import TokenContext
 
 SHA = "a" * 40
@@ -328,3 +328,88 @@ def test_load_fact_locks_and_reports_not_found(fresh_db):
         for bad in ("not-a-uuid", str(uuid.uuid4())):
             with pytest.raises(NotFound):
                 stale.load_fact(conn, "alpha", bad)
+
+
+def _marker_repo(db):
+    """alpha: repo "demo" with a warning and a plain fact that both name `old_name.py`, and a
+    general fact on a general node of the same name."""
+    with db.publisher_tx() as conn:
+        gnode = graph.add_node(conn, "general", "concept", "repo", "demo")
+        gfact = graph.add_fact(
+            conn, "general", "fact", "general entry is `old_name.py`", node_id=gnode
+        )
+    with db.ws_tx("alpha") as conn:
+        node = graph.add_node(conn, "alpha", "instance", "repo", "demo")
+        warn = graph.add_fact(conn, "alpha", "warning", "never delete `old_name.py`", node_id=node)
+        fact = graph.add_fact(conn, "alpha", "fact", "entry is `old_name.py`", node_id=node)
+    return warn, fact, gfact
+
+
+def _open_flag_count(db, fact_id):
+    return len([r for r in _flags(db, "alpha", fact_id) if r[5] is None])
+
+
+def test_brief_and_search_show_the_marker_until_resolved(fresh_db, t, as_ctx, ctx_a):
+    warn, fact, _ = _marker_repo(fresh_db)
+    as_ctx(ctx_a)
+    commit = "abc1234" + "0" * 33
+    missing = [{"token": "old_name.py", "commit": None, "subject": None}]
+    with fresh_db.ws_tx("alpha") as conn:
+        assert stale.flag(conn, "alpha", warn, "demo", commit, missing, [])["flagged"] is True
+        assert stale.flag(conn, "alpha", fact, "demo", commit, missing, [])["flagged"] is True
+    note = "(in doubt: old_name.py not found at abc1234)"
+
+    out = brief.brief(fresh_db, ctx_a, "demo")
+    assert f"entry is `old_name.py` {note}" in out
+    assert f"- never delete `old_name.py` {note}" in out  # Warnings section
+    assert "general entry is `old_name.py`\n" in out + "\n"  # general facts carry none
+    assert f"general entry is `old_name.py` {note}" not in out
+    only = brief.brief(fresh_db, ctx_a, "demo", repo_only=True)
+    assert f"[fact] entry is `old_name.py` {note}" in only
+    assert "never delete" not in only  # repo_only skips warnings
+
+    hits = search.search(fresh_db, FakeEmbedder(down=True), ctx_a, "old_name.py").hits
+    hit = next(h for h in hits if h["text"] == "entry is `old_name.py`")
+    assert hit["in_doubt"] == note
+    general = next(h for h in hits if h["namespace"] == "general" and h["kind"] == "fact")
+    assert "in_doubt" not in general
+    assert all("in_doubt" not in h for h in hits if h["kind"] != "fact")
+
+    with fresh_db.ws_tx("alpha") as conn:  # owner keeps the warning's flag
+        conn.execute(
+            "UPDATE ws_alpha.stale_flags SET resolved_at = now(), resolution = 'kept' "
+            "WHERE fact_id = %s",
+            (warn,),
+        )
+    out = brief.brief(fresh_db, ctx_a, "demo")
+    assert "- never delete `old_name.py`\n" in out + "\n"
+    assert f"entry is `old_name.py` {note}" in out  # the other one is still in doubt
+
+    assert t.update_fact(fact, text="entry is `new_name.py`")["version"] == 2
+    assert _open_flag_count(fresh_db, fact) == 1  # nothing persisted the resolution yet
+    out = brief.brief(fresh_db, ctx_a, "demo")
+    assert "(in doubt:" not in out  # gone at once
+    hits = search.search(fresh_db, FakeEmbedder(down=True), ctx_a, "new_name.py").hits
+    assert all("in_doubt" not in h for h in hits)
+
+
+def test_open_markers_is_read_only_and_scoped(fresh_db):
+    warn, fact, _ = _marker_repo(fresh_db)
+    with fresh_db.ws_tx("alpha") as conn:
+        assert stale.open_markers(conn, "alpha", []) == {}
+        stale.flag(
+            conn,
+            "alpha",
+            fact,
+            "demo",
+            "abc1234" + "0" * 33,
+            [
+                {"token": "old_name.py"},
+                {"token": "entry"},
+            ],
+            [],
+        )
+        got = stale.open_markers(conn, "alpha", [fact, warn])
+    assert got == {fact: "(in doubt: old_name.py and 1 more not found at abc1234)"}
+    with fresh_db.ws_tx("beta") as conn:
+        assert stale.open_markers(conn, "beta", [fact]) == {}
