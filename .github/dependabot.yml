@@ -22,5 +22,7 @@ updates:
   - package-ecosystem: docker-compose
     directory: /
     schedule: { interval: weekly }
+    ignore:
+      - dependency-name: ashkmb/treant-memory  # our own image; a release bumps it
     groups:
       compose: { patterns: ["*"] }
