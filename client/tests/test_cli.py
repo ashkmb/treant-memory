@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import subprocess
 import sys
 
@@ -236,3 +237,50 @@ def test_kiro_sweep_runs_and_fails_open(monkeypatch, capsys):
     monkeypatch.setattr(kiro, "kiro_sweep", boom)
     assert cli.main(["kiro-sweep"]) == 0
     assert capsys.readouterr().out == ""
+
+
+def test_check_stale_args_and_exit_codes(monkeypatch, capsys, tmp_path):
+    from treant_client import stale
+    from treant_client.config import Config
+
+    calls = []
+    result = {}
+
+    def fake(path, cfg, **kw):
+        calls.append((path, cfg, kw))
+        return result["res"]
+
+    cfg = Config(url="https://example.invalid/mcp")
+    monkeypatch.setattr(stale, "run", fake)
+    monkeypatch.setattr("treant_client.config.load_config", lambda *a, **k: cfg)
+    doubt = stale.InDoubt(
+        "f-1",
+        [
+            {"token": "old_name.py", "commit": "abc1234", "subject": "rename old_name"},
+            {"token": "src/gone.py", "commit": None, "subject": None},
+        ],
+    )
+    result["res"] = stale.RunResult("ok", 3, 0, [doubt])
+    p = str(tmp_path)
+    assert cli.main(["check-stale", "--repo", p, "--dry-run"]) == 0
+    assert calls[-1] == (p, cfg, {"dry_run": True, "use_memo": False})
+    out = capsys.readouterr().out
+    assert "would flag f-1: old_name.py (removed in abc1234: rename old_name)" in out
+    assert "would flag f-1: src/gone.py (not found)" in out
+    assert out.rstrip().endswith("checked 3 facts, 1 in doubt (dry run)")
+
+    monkeypatch.chdir(tmp_path)
+    result["res"] = stale.RunResult("ok", 5, 2, [doubt])
+    assert cli.main(["check-stale"]) == 0
+    assert calls[-1][0] == os.getcwd()
+    assert calls[-1][2] == {"dry_run": False, "use_memo": False}
+    assert capsys.readouterr().out.strip() == "checked 5 facts, flagged 2"
+
+    result["res"] = stale.RunResult("stopped_budget", 5, 2, [])
+    assert cli.main(["check-stale"]) == 0
+    capsys.readouterr()
+
+    result["res"] = stale.RunResult("not_a_repo", 0, 0, [])
+    assert cli.main(["check-stale"]) == 1
+    captured = capsys.readouterr()
+    assert captured.err.strip() == "check-stale: not_a_repo" and captured.out == ""

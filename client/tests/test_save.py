@@ -3,10 +3,19 @@ import os
 import threading
 import time
 
+import pytest
+
+from treant_client import stale
 from treant_client.mcp_http import TreantError
 from treant_client.save import save_worker
 
 BIG = "USER: please refactor the module\nASSISTANT: done, see branch feat/x\n" * 40  # > 1500
+
+
+@pytest.fixture(autouse=True)
+def _no_stale_check(monkeypatch):
+    """The after-save stale check has its own tests; here it would run real git."""
+    monkeypatch.setattr(stale, "check_after_save", lambda *a, **k: "ok")
 
 
 class FakeSession:
@@ -263,3 +272,25 @@ def test_lock_wait_is_bounded(cfg_tmp, tmp_path):
     finally:
         os.close(fd)
     assert _run(cfg_tmp, _cwd(cfg_tmp), FakeSession(), lock_wait=0.3) == "saved"
+
+
+def test_check_runs_after_a_saved_session_only(cfg_tmp, monkeypatch):
+    seen = []
+
+    def recorder(cwd, cfg, *, token_getter, session_factory):
+        seen.append((cwd, cfg, token_getter, session_factory))
+        return "ok"
+
+    monkeypatch.setattr(stale, "check_after_save", recorder)
+    cwd = _cwd(cfg_tmp)
+    sess = FakeSession()
+    assert _run(cfg_tmp, cwd, sess) == "saved"
+    assert seen == [(str(cwd), cfg_tmp, tok, sess.factory)]
+    assert _run(cfg_tmp, cwd, FakeSession(), load=lambda: ("short", 1)) == "skipped_small"
+    assert len(seen) == 1
+
+    def boom(*a, **k):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(stale, "check_after_save", boom)
+    assert _run(cfg_tmp, cwd, FakeSession()) == "saved"

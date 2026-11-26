@@ -75,6 +75,12 @@ def _build_parser() -> argparse.ArgumentParser:
     ts.add_argument("workspace")
     tsub.add_parser("check", help="show which workspace tokens are set and whether they work")
 
+    cs = sub.add_parser(
+        "check-stale", help="flag repository facts whose files or names are gone from HEAD"
+    )
+    cs.add_argument("--repo", metavar="PATH", help="a folder in the repository (default: here)")
+    cs.add_argument("--dry-run", action="store_true", help="print what would be flagged")
+
     for name in ("install", "uninstall"):
         i = sub.add_parser(name, help=f"{name} the hooks, MCP entries and launchd job")
         i.add_argument("--dry-run", action="store_true", help="print diffs, change nothing")
@@ -217,6 +223,37 @@ def _token_check() -> int:
     return 0
 
 
+def _check_stale(a: argparse.Namespace) -> int:
+    from treant_client import stale
+    from treant_client.config import load_config
+
+    path = a.repo or os.getcwd()
+    try:
+        cfg = load_config()
+    except Exception:  # noqa: BLE001
+        print("check-stale: failed_config", file=sys.stderr)
+        return 1
+    res = stale.run(path, cfg, dry_run=a.dry_run, use_memo=False)
+    if res.status not in ("ok", "stopped_budget"):
+        print(f"check-stale: {res.status}", file=sys.stderr)
+        return 1
+    if a.dry_run:
+        for doubt in res.in_doubt:
+            for m in doubt.missing:
+                why = (
+                    f"removed in {m['commit']}: {m['subject'] or ''}".rstrip(": ")
+                    if m["commit"]
+                    else "not found"
+                )
+                print(f"would flag {doubt.fact_id}: {m['token']} ({why})")
+        print(f"checked {res.checked} facts, {len(res.in_doubt)} in doubt (dry run)")
+    else:
+        print(f"checked {res.checked} facts, flagged {res.flagged}")
+    if res.status == "stopped_budget":
+        print("check-stale: stopped_budget (not every fact was checked)", file=sys.stderr)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     a = _build_parser().parse_args(argv)
     if a.cmd == "hook":
@@ -240,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
             sys.stdout.write(kiro.resume_brief(os.getcwd()))
             sys.stdout.flush()
         return 0
+    if a.cmd == "check-stale":
+        return _check_stale(a)
     if a.cmd == "token":
         return _token_set(a.workspace) if a.token_cmd == "set" else _token_check()
     from treant_client import installer
