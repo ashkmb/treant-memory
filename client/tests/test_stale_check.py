@@ -90,7 +90,7 @@ def repo(tmp_path, git_env):
     _commit(path, "initial")
     _git(path, "mv", "old_name.py", "new_name.py")
     _commit(path, "rename old_name to new_name")
-    return path, _git(path, "rev-parse", "--short", "HEAD"), _git(path, "rev-parse", "HEAD")
+    return path, _git(path, "rev-parse", "--short=12", "HEAD"), _git(path, "rev-parse", "HEAD")
 
 
 @pytest.fixture
@@ -197,7 +197,7 @@ def test_weak_tokens_need_a_removing_commit(repo, cfg):
     _commit(path, "add notes")
     _git(path, "rm", "-q", "notes.md")
     _commit(path, "drop the notes")
-    short = _git(path, "rev-parse", "--short", "HEAD")
+    short = _git(path, "rev-parse", "--short=12", "HEAD")
     sess = _sess(facts)
     res = _run(path, cfg, sess)
     assert res.flagged == 1
@@ -413,7 +413,7 @@ def test_removed_directory_has_its_removing_commit(repo, cfg):
     path, _, _ = repo
     _git(path, "rm", "-q", "-r", "src")
     _commit(path, "drop src")
-    short = _git(path, "rev-parse", "--short", "HEAD")
+    short = _git(path, "rev-parse", "--short=12", "HEAD")
     sess = _sess([FACTS[3]])
     res = _run(path, cfg, sess)
     assert res.flagged == 1
@@ -463,7 +463,7 @@ def test_weak_ident_with_a_removing_commit_is_flagged(repo, cfg):
     (path / "widgets.py").write_text("class NewWidget:\n    pass\n")
     _git(path, "add", "widgets.py")
     _commit(path, "rename the widget class")
-    short = _git(path, "rev-parse", "--short", "HEAD")
+    short = _git(path, "rev-parse", "--short=12", "HEAD")
     facts = [{"id": F1, "type": "fact", "text": "The base class is `OldWidget`."}]
     sess = _sess(facts)
     assert _run(path, cfg, sess).flagged == 1
@@ -484,7 +484,7 @@ def test_glob_characters_in_a_needle_are_literal(repo):
     _commit(path, "drop page")
     idx = stale.RepoIndex.load(str(path), time.monotonic() + 10)
     tok_ = stale.Token("pages/[id].tsx", "path", "pages/[id].tsx")
-    assert idx.removed_in(tok_) == (_git(path, "rev-parse", "--short", "HEAD"), "drop page")
+    assert idx.removed_in(tok_) == (_git(path, "rev-parse", "--short=12", "HEAD"), "drop page")
     other = stale.Token("pages/i.tsx", "path", "pages/i.tsx")  # "[id]" as a glob would match
     assert idx.removed_in(other) is None
     assert stale._glob_escape("a/[x]*?\\.py") == "a/\\[x\\]\\*\\?\\\\.py"
@@ -538,3 +538,57 @@ def test_no_facts_skips_the_repo_index(repo, cfg, monkeypatch):
     monkeypatch.setattr(stale.RepoIndex, "load", boom)
     res = _run(path, cfg, _sess([]))
     assert res.status == "ok" and res.checked == 0
+
+
+def _write_commit(path, name, text, msg):
+    (path / name).write_text(text)
+    _git(path, "add", name)
+    _commit(path, msg)
+
+
+def test_identifier_evidence_is_word_bounded(repo, cfg):
+    path, _, _ = repo
+    _write_commit(path, "loader.py", "class DataLoader:\n    pass\n", "add DataLoader")
+    _write_commit(
+        path, "loader.py", "class DataLoaderV2:\n    pass\n", "rename DataLoader to DataLoaderV2"
+    )
+    rename = _git(path, "rev-parse", "--short=12", "HEAD")
+    _write_commit(path, "use.py", "x = DataLoaderV2()\n", "use DataLoaderV2")
+    facts = [{"id": F1, "type": "fact", "text": "The loader class is `DataLoader`."}]
+    sess = _sess(facts)
+    assert _run(path, cfg, sess).flagged == 1
+    assert _flags(sess)[0]["missing"] == [
+        {"token": "DataLoader", "commit": rename, "subject": "rename DataLoader to DataLoaderV2"}
+    ]
+
+
+def test_dotted_identifier_evidence_escapes_regex_specials(repo):
+    import time
+
+    path, _, _ = repo
+    _write_commit(path, "cfg.py", "a = cfgXload\n", "add the decoy")
+    _write_commit(path, "cfg.py", "a = cfg.load\n", "add cfg.load")
+    _write_commit(path, "cfg.py", "a = 1\n", "drop cfg.load")
+    drop = _git(path, "rev-parse", "--short=12", "HEAD")
+    _write_commit(path, "other.py", "b = cfgYload\n", "add another decoy")
+    idx = stale.RepoIndex.load(str(path), time.monotonic() + 10)
+    assert idx.removed_in(stale.Token("cfg.load", "ident", "cfg.load")) == (drop, "drop cfg.load")
+
+
+def test_weak_ident_is_missing_only_on_a_real_removal(repo, cfg):
+    path, _, _ = repo
+    _write_commit(path, "chart.py", "x = BarChartV2()\n", "add BarChartV2")
+    _write_commit(path, "chart.py", "x = 1\n", "drop BarChartV2")
+    facts = [{"id": F1, "type": "fact", "text": "Uses `BarChart` for charts."}]
+    sess = _sess(facts)
+    assert _run(path, cfg, sess).flagged == 0  # `BarChart` itself was never there
+
+
+def test_evidence_hash_ignores_a_short_core_abbrev(repo, cfg):
+    path, _, _ = repo
+    _git(path, "config", "core.abbrev", "4")
+    facts = [{"id": F1, "type": "fact", "text": "Entry point is `old_name.py`."}]
+    sess = _sess(facts)
+    assert _run(path, cfg, sess).flagged == 1
+    commit = _flags(sess)[0]["missing"][0]["commit"]
+    assert commit == _git(path, "rev-parse", "--short=12", "HEAD")

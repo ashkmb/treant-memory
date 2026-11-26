@@ -38,6 +38,7 @@ _PER_FACT_REFUSALS = ("invalid input", "not found")
 # -C alone decides the repository; an inherited GIT_DIR or index would point elsewhere
 _DROPPED_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
 _GLOB_SPECIAL = re.compile(r"([*?\[\]\\])")
+_ERE_SPECIAL = re.compile(r"([.^$*+?()\[\]{}|\\])")
 
 
 def _git(top: str, args: list[str], timeout: float) -> subprocess.CompletedProcess | None:
@@ -60,6 +61,13 @@ def _suffixes(path: str) -> list[str]:
 
 def _glob_escape(needle: str) -> str:
     return _GLOB_SPECIAL.sub(r"\\\1", needle)
+
+
+def _word_regex(needle: str) -> str:
+    """A POSIX ERE (git's ``--pickaxe-regex``) matching ``needle`` as a whole word."""
+    edge = "[^A-Za-z0-9_]"
+    word = _ERE_SPECIAL.sub(r"\\\1", needle)
+    return f"(^|{edge}){word}({edge}|$)"
 
 
 def _stem(name: str) -> str:
@@ -162,14 +170,17 @@ class RepoIndex:
             return None
         # the owner's git config must not add signature checks or external diff programs
         args = ["log", "-1", "--no-show-signature", "--no-ext-diff", "--no-textconv"]
-        args.append("--format=%h%x00%s")
+        # a fixed minimum: the owner's core.abbrev may be below the 7 characters the server needs
+        args += ["--abbrev=12", "--format=%h%x00%s"]
         if token.kind == "path":
             needle = _glob_escape(token.needle)
             args += ["--diff-filter=DR", rng, "--"]
             # the second pathspec covers a directory token: the files under it
             args += [f":(glob)**/{needle}", f":(glob)**/{needle}/**"]
         else:
-            args += [f"-S{token.needle}", rng]
+            # word-bounded: `DataLoader` must not match a commit that only added `DataLoaderV2`.
+            # Attached to -S, so a needle can never be read as an option.
+            args += ["--pickaxe-regex", f"-S{_word_regex(token.needle)}", rng]
         r = _git(self.top, args, self._left(LOG_TIMEOUT_S))
         if r is None or r.returncode != 0:
             return None
