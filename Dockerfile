@@ -19,6 +19,8 @@ RUN uv sync --frozen --no-dev --no-editable
 
 USER treant
 EXPOSE 8000
+# Ownership check for the MCP registry (registry.modelcontextprotocol.io).
+LABEL io.modelcontextprotocol.server.name="io.github.ashkmb/treant-memory"
 # TCP connect to the port in TREANT_BIND (host:port, default 127.0.0.1:8000).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD ["python", "-c", "import os, socket; socket.create_connection(('127.0.0.1', int(os.environ.get('TREANT_BIND', '').rpartition(':')[2] or 8000)), 3).close()"]

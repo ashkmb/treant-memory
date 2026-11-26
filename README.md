@@ -356,8 +356,9 @@ clients: the client guard decides locally from its own config and asks the serve
 ## Requirements and limitations
 
 - **Server:** Docker with Compose for the quickstart. The production guide targets Linux with Docker
-  Engine and the Compose plugin v2.24 or newer, and about 2 GB of RAM with the bundled embedder. No
-  image is published to a registry; you build it from this repository.
+  Engine and the Compose plugin v2.24 or newer, and about 2 GB of RAM with the bundled embedder. The
+  quickstart pulls the image from `ghcr.io/ashkmb/treant-memory`; the production guide builds it
+  from this repository.
 - **Python 3.12+** for `treant` and `treant-client` (`treant-guard` needs 3.11+).
 - **Postgres 17 with pgvector 0.8 or newer.** No other extension is needed.
 - **One embedding model.** The supported model is **EmbeddingGemma 300M (768 dimensions)**. The
