@@ -220,7 +220,7 @@ linux/arm64). To run your own changes instead, run `docker compose build` first:
 same tag from your checkout. `scripts/quickstart-smoke.sh` runs all of the above plus a save and
 a search over MCP; CI runs it on every push.
 
-`compose.yml` runs `postgres` (`pgvector/pgvector:0.8.6-pg17-bookworm`), `embed` (llama.cpp
+`compose.yml` runs `postgres` (`pgvector/pgvector:0.8.7-pg17-bookworm`), `embed` (llama.cpp
 server with EmbeddingGemma 300M), `treant` (`serve`), `worker` and a one-shot `admin` service
 for the owner CLI (`docker compose run --rm admin <command>`). It is meant for one machine.
 For a public host put the server behind a TLS reverse proxy and set `TREANT_ALLOWED_HOSTS`.
