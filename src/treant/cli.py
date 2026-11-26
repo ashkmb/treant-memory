@@ -608,6 +608,12 @@ def _cmd_worker(args: argparse.Namespace, env: Mapping[str, str]) -> int:
 
 
 def _cmd_serve(args: argparse.Namespace, env: Mapping[str, str]) -> int:
+    if args.list_tools:
+        # Tool listing for MCP directories: stdio, no settings, no database, every call refused.
+        from treant.server import build_listing_mcp
+
+        build_listing_mcp().run("stdio")
+        return 0
     import uvicorn
 
     from treant.server import build_app
@@ -758,7 +764,13 @@ def _parser() -> argparse.ArgumentParser:
 
     sub.add_parser("schemas").set_defaults(fn=_cmd_schemas)
     sub.add_parser("isolation-test").set_defaults(fn=_cmd_isolation)
-    sub.add_parser("serve").set_defaults(fn=_cmd_serve)
+    sv = sub.add_parser("serve")
+    sv.add_argument(
+        "--list-tools",
+        action="store_true",
+        help="serve only the tool list over stdio, without a database (for MCP directories)",
+    )
+    sv.set_defaults(fn=_cmd_serve)
     sub.add_parser("worker").set_defaults(fn=_cmd_worker)
     sub.add_parser("dashboard").set_defaults(fn=_cmd_dashboard)
     return p
