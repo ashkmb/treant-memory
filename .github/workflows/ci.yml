@@ -57,3 +57,16 @@ jobs:
       - run: uv sync --locked
       - run: uv run ruff check
       - run: uv run pytest -q
+
+  quickstart:
+    # The README quick start, end to end: compose stack from this checkout, bootstrap, token,
+    # a save over MCP and a search that finds it (scripts/quickstart-smoke.sh).
+    name: quickstart
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: BUILD=1 scripts/quickstart-smoke.sh
+      - if: failure()
+        run: docker compose logs --no-color --tail 200
+      - if: always()
+        run: docker compose down -v

@@ -1,0 +1,58 @@
+name: Bug report
+description: Something does not work as the README or docs say.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please leave out tokens, passwords, keys and private memory
+        content; redact them in logs. Security problems go to the private advisory form instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The smallest set of steps or commands that shows it.
+      placeholder: |
+        1. docker compose up -d ...
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit (git rev-parse --short HEAD).
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Server (treant serve)
+        - Worker (embed, distill, apply, gate)
+        - Dashboard
+        - Client (treant-client, hooks)
+        - Guard
+        - Quick start / compose
+        - Docs
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, Docker version, MCP client (Claude Code, Kiro, ...), and anything else relevant.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output, redacted.
+      render: text

@@ -1,0 +1,38 @@
+name: Commercial licence
+description: Your organization has 5 or more people and wants to use Treant commercially.
+title: Commercial licence
+labels: [commercial-licence]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Personal and noncommercial use is free, and so is commercial use by companies with fewer
+        than 5 people (see SMALL-COMPANY-GRANT.md). Everyone else needs a commercial licence.
+
+        This issue is public. Keep it short: say who you are and how to reach you, and the
+        details can move to private contact.
+  - type: input
+    id: org
+    attributes:
+      label: Organization
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: How to reach you
+      description: An email address or other contact you are happy to have public.
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size, counting employees and contractors
+      options: ["5 to 20", "21 to 100", "more than 100"]
+    validations:
+      required: true
+  - type: textarea
+    id: use
+    attributes:
+      label: Planned use
+      description: Optional. Roughly how you want to use Treant.

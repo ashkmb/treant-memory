@@ -8,6 +8,7 @@
 <div align="center">
 
 [![CI](https://img.shields.io/github/actions/workflow/status/ashkmb/treant-memory/ci.yml?label=CI&logo=github)](https://github.com/ashkmb/treant-memory/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ashkmb/treant-memory?label=release)](https://github.com/ashkmb/treant-memory/releases)
 [![Licence](https://img.shields.io/badge/licence-PolyForm%20NC%20%2B%20small--company%20grant-1F6F4A)](#licence)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Postgres](https://img.shields.io/badge/Postgres%2017-pgvector-4169E1?logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
@@ -203,7 +204,6 @@ Needs Docker with Compose. Everything listens on loopback only.
 ```sh
 git clone https://github.com/ashkmb/treant-memory.git && cd treant-memory
 cp .env.example .env          # then set POSTGRES_PASSWORD and TREANT_LOGIN_PASSWORD
-docker compose build
 docker compose up -d postgres embed            # the first start downloads the embedding model (about 330 MB)
 docker compose run --rm admin bootstrap        # one-shot: roles, schemas, grants
 docker compose run --rm admin workspace create personal
@@ -214,6 +214,11 @@ docker compose run --rm admin token create personal --label laptop --actions cre
 ```
 
 The token is printed once and not stored.
+
+Compose pulls the published image `ghcr.io/ashkmb/treant-memory:0.1.0` (linux/amd64 and
+linux/arm64). To run your own changes instead, run `docker compose build` first: it builds the
+same tag from your checkout. `scripts/quickstart-smoke.sh` runs all of the above plus a save and
+a search over MCP; CI runs it on every push.
 
 `compose.yml` runs `postgres` (`pgvector/pgvector:0.8.6-pg17-bookworm`), `embed` (llama.cpp
 server with EmbeddingGemma 300M), `treant` (`serve`), `worker` and a one-shot `admin` service
@@ -227,7 +232,7 @@ promotion to `general`.
 
 | Without | What still works | What does not |
 |---|---|---|
-| LLM gateway (`TREANT_LITELLM_URL`, `TREANT_LITELLM_KEY_<WS>`) | Saves are stored, embedded and searchable (journal entries); `brief`, `warnings`, the guard. | Distillation into nodes and facts, and therefore promotion to `general`. Distill jobs fail as `model_unavailable` and end up dead after 12 attempts (replay them later with `treant jobs retry --status dead`). To keep a workspace journal-only on purpose, run `treant workspace set <ws> --backend none`. |
+| LLM gateway (`TREANT_LITELLM_URL`, `TREANT_LITELLM_KEY_<WS>`) | Saves are stored, embedded and searchable (journal entries); the guard. `brief` and `warnings` answer, but stay nearly empty: they are built from distilled facts. | Distillation into nodes and facts, and therefore promotion to `general`. Distill jobs fail as `model_unavailable` and end up dead after 12 attempts (replay them later with `treant jobs retry --status dead`). To keep a workspace journal-only on purpose, run `treant workspace set <ws> --backend none`. |
 | Jev judge (`TREANT_JEV=off`, the quickstart default) | Everything in the workspace, including distillation and the LLM judge. Items that pass the rules and the LLM judge wait in the review queue. | Automatic publishing to `general`. Approve items yourself with `treant general approve <id>` (or in the dashboard). |
 
 The LLM gateway is any OpenAI-compatible chat endpoint (LiteLLM was used in development). The
@@ -419,5 +424,6 @@ and the `Required Notice` line that names the source.
 Contributions will be accepted under the [Contributor License Agreement](CLA.md) (draft, pending
 legal review; pull requests are not open yet).
 
-To ask for a commercial licence, open an issue titled "Commercial licence" in
-https://github.com/ashkmb/treant-memory or contact Ashkan Kamyab through https://ashkmb.com.
+To ask for a commercial licence, open a
+[Commercial licence issue](https://github.com/ashkmb/treant-memory/issues/new?template=commercial-licence.yml)
+or contact Ashkan Kamyab through https://ashkmb.com.

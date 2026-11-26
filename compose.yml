@@ -61,8 +61,10 @@ services:
 
   treant:
     # The MCP server: streamable HTTP at /mcp, health at /healthz.
+    # The published image for this release; `docker compose build` builds it from this checkout
+    # instead (same tag), for local changes.
+    image: ghcr.io/ashkmb/treant-memory:0.1.0
     build: .
-    image: treant:local
     command: ["serve"]
     environment:
       <<: *treant-env
@@ -78,7 +80,7 @@ services:
 
   worker:
     # Job stages: embed, distill, apply, gate. The only service that calls models.
-    image: treant:local
+    image: ghcr.io/ashkmb/treant-memory:0.1.0
     command: ["worker"]
     healthcheck:
       disable: true  # the image's check probes the server port; the worker has none
@@ -100,7 +102,7 @@ services:
   admin:
     # One-shot owner CLI: docker compose run --rm admin <command>. The only service that gets
     # the superuser DSN and the login password.
-    image: treant:local
+    image: ghcr.io/ashkmb/treant-memory:0.1.0
     profiles: [admin]
     healthcheck:
       disable: true
