@@ -428,7 +428,113 @@ def test_unknown_file_list_counts_everything_present(repo, monkeypatch):
     path, _, _ = repo
     real = stale._git
     monkeypatch.setattr(
-        stale, "_git", lambda top, args, t: None if args[0] == "ls-files" else real(top, args, t)
+        stale, "_git", lambda top, args, t: None if args[0] == "ls-tree" else real(top, args, t)
     )
     idx = stale.RepoIndex.load(str(path), time.monotonic() + 10)
     assert idx.has_path("src/gone/thing.py") and idx.has_ident("gone_helper")
+
+
+def test_index_is_not_head(repo, cfg):
+    """Only HEAD counts: a staged rename keeps the old path, a staged new file is absent."""
+    path, _, head = repo
+    _git(path, "mv", "src/app/main.py", "src/app/other.py")  # staged, not committed
+    (path / "src" / "tools").mkdir(parents=True)
+    (path / "src" / "tools" / "staged_only.py").write_text("s = 1\n")
+    _git(path, "add", "src/tools/staged_only.py")
+    facts = [
+        {"id": F1, "type": "fact", "text": "Entry is `src/app/main.py`."},
+        {"id": F2, "type": "fact", "text": "Run `src/tools/staged_only.py` first."},
+    ]
+    sess = _sess(facts)
+    res = _run(path, cfg, sess)
+    assert res.status == "ok" and res.flagged == 1
+    [args] = _flags(sess)
+    assert args["fact_id"] == F2 and args["commit"] == head
+    assert args["missing"] == [
+        {"token": "src/tools/staged_only.py", "commit": None, "subject": None}
+    ]
+
+
+def test_weak_ident_with_a_removing_commit_is_flagged(repo, cfg):
+    path, _, _ = repo
+    (path / "widgets.py").write_text("class OldWidget:\n    pass\n")
+    _git(path, "add", "widgets.py")
+    _commit(path, "add widgets")
+    (path / "widgets.py").write_text("class NewWidget:\n    pass\n")
+    _git(path, "add", "widgets.py")
+    _commit(path, "rename the widget class")
+    short = _git(path, "rev-parse", "--short", "HEAD")
+    facts = [{"id": F1, "type": "fact", "text": "The base class is `OldWidget`."}]
+    sess = _sess(facts)
+    assert _run(path, cfg, sess).flagged == 1
+    assert _flags(sess)[0]["missing"] == [
+        {"token": "OldWidget", "commit": short, "subject": "rename the widget class"}
+    ]
+
+
+def test_glob_characters_in_a_needle_are_literal(repo):
+    import time
+
+    path, _, _ = repo
+    (path / "pages").mkdir()
+    (path / "pages" / "[id].tsx").write_text("x\n")
+    _git(path, "add", "pages")
+    _commit(path, "add page")
+    _git(path, "rm", "-q", "pages/[id].tsx")
+    _commit(path, "drop page")
+    idx = stale.RepoIndex.load(str(path), time.monotonic() + 10)
+    tok_ = stale.Token("pages/[id].tsx", "path", "pages/[id].tsx")
+    assert idx.removed_in(tok_) == (_git(path, "rev-parse", "--short", "HEAD"), "drop page")
+    other = stale.Token("pages/i.tsx", "path", "pages/i.tsx")  # "[id]" as a glob would match
+    assert idx.removed_in(other) is None
+    assert stale._glob_escape("a/[x]*?\\.py") == "a/\\[x\\]\\*\\?\\\\.py"
+
+
+def test_inherited_git_dir_does_not_redirect(repo, cfg, tmp_path, monkeypatch, git_env):
+    path, _, _ = repo
+    decoy = tmp_path / "decoy"
+    decoy.mkdir()
+    _git(decoy, "init", "-q")
+    monkeypatch.setenv("GIT_DIR", str(decoy / ".git"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(decoy / ".git" / "index"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(decoy))
+    sess = _sess()
+    res = _run(path, cfg, sess)
+    assert res.status == "ok" and res.flagged == 1
+
+
+def test_http_timeouts_are_bounded_by_the_budget(repo, cfg):
+    path, _, _ = repo
+    clock = Clock()
+    seen = []
+
+    class TimedSession(FakeSession):
+        timeout = None
+
+        def factory(self, url, token, timeout):
+            seen.append(("open", timeout))
+            return super().factory(url, token, timeout)
+
+    def tick(name, args):
+        seen.append((name, sess.timeout))
+        clock.t += 25
+
+    sess = TimedSession(
+        results={"repo_facts": {"facts": FACTS, "truncated": False}, "flag_stale": FLAGGED},
+        on_call=tick,
+    )
+    _run(path, cfg, sess, clock=clock)
+    assert seen[0] == ("open", 15.0)
+    assert seen[1] == ("repo_facts", 15.0)
+    assert seen[2] == ("flag_stale", 5.0)  # 30 s budget, 25 s spent
+
+
+def test_no_facts_skips_the_repo_index(repo, cfg, monkeypatch):
+    path, _, _ = repo
+
+    def boom(*a, **k):
+        raise AssertionError("index loaded")
+
+    monkeypatch.setattr(stale.RepoIndex, "load", boom)
+    res = _run(path, cfg, _sess([]))
+    assert res.status == "ok" and res.checked == 0

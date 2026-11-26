@@ -1,6 +1,6 @@
 """The stale-fact check: flag repository facts whose code tokens are gone from ``HEAD``.
 
-Reads the repository with ``git ls-files`` paths and ``git grep -q`` / ``git log`` exit codes
+Reads the repository with ``git ls-tree HEAD`` paths and ``git grep -q`` / ``git log`` exit codes
 and commit lines only, never file contents. Sends the server only tokens that appear verbatim
 in the fact text, the ``HEAD`` commit id, and removing commit ids and subjects. Precision over
 recall: any uncertain check (git error, timeout, submodule, no evidence for a weak token)
@@ -31,18 +31,23 @@ LOG_MAX_COMMITS = 500
 LOG_TIMEOUT_S = 5.0
 GIT_TIMEOUT_S = 5.0
 MEMO_FILE = "stale-heads.json"
+MIN_HTTP_S = 1.0
 
 _HEX = re.compile(r"[0-9a-f]{7,64}")
 _PER_FACT_REFUSALS = ("invalid input", "not found")
+# -C alone decides the repository; an inherited GIT_DIR or index would point elsewhere
+_DROPPED_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE")
+_GLOB_SPECIAL = re.compile(r"([*?\[\]\\])")
 
 
 def _git(top: str, args: list[str], timeout: float) -> subprocess.CompletedProcess | None:
     """One git call in ``top``; None when it could not run or timed out."""
     if timeout <= 0:
         return None
+    env = {k: v for k, v in os.environ.items() if k not in _DROPPED_ENV}
     try:
         return subprocess.run(
-            ["git", "-C", top, *args], capture_output=True, timeout=timeout, check=False
+            ["git", "-C", top, *args], capture_output=True, timeout=timeout, check=False, env=env
         )
     except (OSError, subprocess.SubprocessError, ValueError):
         return None
@@ -51,6 +56,10 @@ def _git(top: str, args: list[str], timeout: float) -> subprocess.CompletedProce
 def _suffixes(path: str) -> list[str]:
     parts = path.split("/")
     return ["/".join(parts[i:]) for i in range(len(parts))]
+
+
+def _glob_escape(needle: str) -> str:
+    return _GLOB_SPECIAL.sub(r"\\\1", needle)
 
 
 def _stem(name: str) -> str:
@@ -69,7 +78,8 @@ def _is_weak(token: Token) -> bool:
 
 
 class RepoIndex:
-    """Tracked paths of one repository at ``HEAD``, and the git lookups for one run."""
+    """Paths of one repository's ``HEAD`` commit (not the index or the work tree: the flag
+    names ``HEAD``), and the git lookups for one run."""
 
     def __init__(self, top: str, deadline: float, clock=time.monotonic):
         self.top = top
@@ -88,22 +98,20 @@ class RepoIndex:
     @classmethod
     def load(cls, top: str, deadline: float, clock=time.monotonic) -> RepoIndex:
         idx = cls(top, deadline, clock)
-        r = _git(top, ["ls-files", "-z"], idx._left(GIT_TIMEOUT_S))
-        if r is not None and r.returncode == 0:
-            idx.listed = True
-            for path in r.stdout.decode("utf-8", "replace").split("\0"):
-                if not path:
-                    continue
-                parts = path.split("/")
-                for i in range(1, len(parts) + 1):
-                    idx.paths.update(_suffixes("/".join(parts[:i])))
-                idx.stems.update(_stem(p) for p in parts)
-        r = _git(top, ["ls-files", "-s", "-z"], idx._left(GIT_TIMEOUT_S))
-        if r is not None and r.returncode == 0:
-            for entry in r.stdout.decode("utf-8", "replace").split("\0"):
-                meta, tab, path = entry.partition("\t")
-                if tab and meta.startswith("160000 "):
-                    idx.gitlinks.update(_suffixes(path))
+        r = _git(top, ["ls-tree", "-r", "-z", "--full-tree", "HEAD"], idx._left(GIT_TIMEOUT_S))
+        if r is None or r.returncode != 0:
+            return idx
+        idx.listed = True
+        for entry in r.stdout.decode("utf-8", "replace").split("\0"):
+            meta, tab, path = entry.partition("\t")  # "<mode> <type> <object>\t<path>"
+            if not tab or not path:
+                continue
+            if meta.startswith("160000 "):  # a submodule's gitlink
+                idx.gitlinks.update(_suffixes(path))
+            parts = path.split("/")
+            for i in range(1, len(parts) + 1):
+                idx.paths.update(_suffixes("/".join(parts[:i])))
+            idx.stems.update(_stem(p) for p in parts)
         return idx
 
     def has_path(self, needle: str) -> bool:
@@ -152,12 +160,16 @@ class RepoIndex:
         rng = self._log_range()
         if rng is None:
             return None
+        # the owner's git config must not add signature checks or external diff programs
+        args = ["log", "-1", "--no-show-signature", "--no-ext-diff", "--no-textconv"]
+        args.append("--format=%h%x00%s")
         if token.kind == "path":
-            args = ["log", "-1", "--diff-filter=DR", "--format=%h%x00%s", rng, "--"]
+            needle = _glob_escape(token.needle)
+            args += ["--diff-filter=DR", rng, "--"]
             # the second pathspec covers a directory token: the files under it
-            args += [f":(glob)**/{token.needle}", f":(glob)**/{token.needle}/**"]
+            args += [f":(glob)**/{needle}", f":(glob)**/{needle}/**"]
         else:
-            args = ["log", "-1", f"-S{token.needle}", "--format=%h%x00%s", rng]
+            args += [f"-S{token.needle}", rng]
         r = _git(self.top, args, self._left(LOG_TIMEOUT_S))
         if r is None or r.returncode != 0:
             return None
@@ -195,6 +207,8 @@ def _memo_read() -> dict:
 
 
 def _memo_write(key: str, head: str) -> None:
+    # Read-merge-replace without a lock: two saves finishing together may drop each other's
+    # entry. A lost entry only costs one more check after the next save.
     path = _memo_path()
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     data = _memo_read()
@@ -280,13 +294,24 @@ def _run(
         return "skipped_no_token"
     terms = cfg.scrub_host_terms.get(ws, [])
 
+    def http_left() -> float:
+        # The budget is soft by up to one call: each HTTP call may take the time left, but
+        # at least MIN_HTTP_S, so a call near the end is not cut off at once.
+        return max(MIN_HTTP_S, min(http_timeout, deadline - clock()))
+
     status = "ok"
-    with session_factory(cfg.url, token, http_timeout) as sess:
-        payload = sess.call_tool("repo_facts", {"repo": repo})
+    with session_factory(cfg.url, token, http_left()) as sess:
+
+        def call(name: str, args: dict):
+            if hasattr(sess, "timeout"):
+                sess.timeout = http_left()  # TreantSession reads it on every request
+            return sess.call_tool(name, args)
+
+        payload = call("repo_facts", {"repo": repo})
         facts = payload.get("facts") if isinstance(payload, dict) else None
         if not isinstance(facts, list):
             raise TreantError("protocol", "no facts")
-        idx = RepoIndex.load(top, deadline, clock)
+        idx = RepoIndex.load(top, deadline, clock) if facts else None
         for fact in facts[:MAX_FACTS]:
             if clock() >= deadline:
                 status = "stopped_budget"
@@ -307,7 +332,7 @@ def _run(
                 continue
             args = {"fact_id": fid, "repo": repo, "commit": head, "missing": missing}
             try:
-                out = sess.call_tool("flag_stale", args)
+                out = call("flag_stale", args)
             except TreantError as e:
                 if e.detail == "forbidden":
                     status = "skipped_forbidden"

@@ -284,3 +284,22 @@ def test_check_stale_args_and_exit_codes(monkeypatch, capsys, tmp_path):
     assert cli.main(["check-stale"]) == 1
     captured = capsys.readouterr()
     assert captured.err.strip() == "check-stale: not_a_repo" and captured.out == ""
+
+
+def test_check_stale_keeps_the_subject_verbatim(monkeypatch, capsys, tmp_path):
+    from treant_client import stale
+    from treant_client.config import Config
+
+    doubt = stale.InDoubt(
+        "f-2",
+        [
+            {"token": "a_b.py", "commit": "abc1234", "subject": "fix: trailing: "},
+            {"token": "c_d.py", "commit": "abc1234", "subject": None},
+        ],
+    )
+    monkeypatch.setattr(stale, "run", lambda *a, **k: stale.RunResult("ok", 1, 0, [doubt]))
+    monkeypatch.setattr("treant_client.config.load_config", lambda *a, **k: Config())
+    assert cli.main(["check-stale", "--repo", str(tmp_path), "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "would flag f-2: a_b.py (removed in abc1234: fix: trailing: )" in out
+    assert "would flag f-2: c_d.py (removed in abc1234)" in out

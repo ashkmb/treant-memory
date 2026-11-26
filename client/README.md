@@ -43,7 +43,7 @@ One token per workspace, kept only in the macOS Keychain (service `treant`, acco
 - After a save: the stale check runs for the session's git repository when its `HEAD` moved
   since the last check (memo `~/.local/state/treant/stale-heads.json`). It asks the server
   for the repository's facts (at most 200 facts / 30 s per run), looks up the file paths and
-  code names each fact mentions with `git ls-files` / `git grep -q`, and flags a fact whose
+  code names each fact mentions with `git ls-tree` / `git grep -q` at `HEAD`, and flags a fact whose
   tokens are gone for the owner to keep or retract. It sends only tokens taken from the fact
   text plus commit ids and subjects, never file contents, and needs a token with `update` to
   flag. Anything uncertain counts as present; a weak token (a bare file name such as

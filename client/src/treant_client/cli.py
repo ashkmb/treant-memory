@@ -240,11 +240,12 @@ def _check_stale(a: argparse.Namespace) -> int:
     if a.dry_run:
         for doubt in res.in_doubt:
             for m in doubt.missing:
-                why = (
-                    f"removed in {m['commit']}: {m['subject'] or ''}".rstrip(": ")
-                    if m["commit"]
-                    else "not found"
-                )
+                if not m["commit"]:
+                    why = "not found"
+                elif m["subject"]:
+                    why = f"removed in {m['commit']}: {m['subject']}"
+                else:
+                    why = f"removed in {m['commit']}"
                 print(f"would flag {doubt.fact_id}: {m['token']} ({why})")
         print(f"checked {res.checked} facts, {len(res.in_doubt)} in doubt (dry run)")
     else:
