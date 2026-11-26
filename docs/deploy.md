@@ -482,6 +482,8 @@ reads stdin: inside scripts and loops, give each call `</dev/null`.
   measurements; the dashboard's Measurements page shows them.
 - Review queue and quarantine: `treant general list --status pending`,
   `treant quarantine list`, or the dashboard's home page counts.
+- Stale-fact flags: `treant stale list <ws>`, or the dashboard's Stale page
+  (`/memory/<ws>/stale`, workspaces only) with "Still true" and "Retract".
 
 Job failure categories:
 

@@ -243,7 +243,7 @@ against the live database (see [deploy.md](deploy.md)).
 
 `treant dashboard` serves the owner pages: review queue, quarantine, jobs, workspaces
 (settings, archive), tokens (created on a `no-store` page, shown once), memory (browse, search,
-edit, history and restore, duplicates, merges, conflicts, sessions, a server-rendered SVG graph
+edit, history and restore, duplicates, merges, conflicts, stale flags, sessions, a server-rendered SVG graph
 view), mistakes, measurements and the audit log. Every action writes `control.audit` with actor
 `dashboard:<user>`.
 

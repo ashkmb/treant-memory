@@ -172,6 +172,86 @@ def test_merge_and_dismiss_flags(fresh_db, client):
     assert _flashes(client)
 
 
+def _stale_flags(db):
+    from treant import stale
+
+    missing = [
+        {"token": "old_name.py", "commit": "abc1234", "subject": "rename old_name to new_name"}
+    ]
+    with db.ws_tx("alpha") as c:
+        node = graph.add_node(c, "alpha", "instance", "repo", "demo")
+        f1 = graph.add_fact(c, "alpha", "fact", "entry is `old_name.py`", node)
+        f2 = graph.add_fact(c, "alpha", "fact", "second `old_name.py` note", node)
+        flags = [
+            stale.flag(c, "alpha", fid, "demo", "a" * 40, missing, [])["flag_id"]
+            for fid in (f1, f2)
+        ]
+    return f1, flags
+
+
+def test_stale_page_keep_and_retract(fresh_db, client):
+    f1, (flag1, flag2) = _stale_flags(fresh_db)
+    page = client.get("/memory/alpha/stale").text
+    assert "entry is `old_name.py`" in page
+    assert "old_name.py" in page and "abc1234" in page and "rename old_name to new_name" in page
+    assert f"/memory/alpha/fact/{f1}/history" in page
+    r = _post(client, f"/memory/alpha/stale/{flag1}/keep")
+    assert r.status_code == 303 and r.headers["location"] == "/memory/alpha/stale"
+    assert _audit(fresh_db, "stale.keep")[-1][0] == "dashboard:alice"
+    _post(client, f"/memory/alpha/stale/{flag2}/retract")
+    assert _audit(fresh_db, "stale.retract")[-1][0] == "dashboard:alice"
+    assert "No open stale flags." in client.get("/memory/alpha/stale").text
+    # already resolved: a flash, not a 500
+    assert _post(client, f"/memory/alpha/stale/{flag1}/keep").status_code == 303
+    assert _flashes(client)
+    assert client.post(f"/memory/alpha/stale/{flag1}/keep").status_code == 403
+    assert client.post(f"/memory/alpha/stale/{flag1}/retract").status_code == 403
+    assert client.get("/memory/general/stale").status_code == 404
+    r = _post(client, f"/memory/general/stale/{flag1}/keep")  # a flash, as for merges
+    assert r.status_code == 303 and _flashes(client)[-1] == "unknown namespace"
+
+
+def test_stale_template_renders_without_database():
+    """No database: render stale.html through the app's Jinja environment."""
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from treant.dashboard.app import _templates
+
+    env = _templates().env
+    row = {
+        "id": 7,
+        "fact_id": "f-1",
+        "text": "<script>alert(1)</script> uses old.py",
+        "repo": "demo",
+        "commit": "abcdef1234567890",
+        "missing": [
+            {"token": "<b>old.py</b>", "commit": "1234567", "subject": "drop <i>old</i>"},
+            {"token": "gone.py", "commit": None, "subject": None},
+        ],
+        "created_at": datetime(2026, 1, 2, 3, 4, tzinfo=UTC),
+    }
+    tpl = env.get_template("stale.html")
+    shell = {
+        "request": SimpleNamespace(url=SimpleNamespace(path="/memory/alpha/stale")),
+        "user": "alice",
+        "can_sign_out": False,
+        "flashes": [],
+        "csrf": "tok",
+    }
+    page = tpl.render(ws="alpha", rows=[row], **shell)
+    assert "<script>alert(1)" not in page and "&lt;script&gt;" in page
+    assert "<b>old.py</b>" not in page and "&lt;b&gt;old.py" in page
+    assert "drop &lt;i&gt;old&lt;/i&gt;" in page and "removed in 1234567" in page
+    assert "not found" in page and "demo @ abcdef1" in page and "2026-01-02 03:04 UTC" in page
+    assert "/memory/alpha/fact/f-1/history" in page
+    assert "/memory/alpha/stale/7/keep" in page and "/memory/alpha/stale/7/retract" in page
+    empty = tpl.render(ws="alpha", rows=[], **shell)
+    empty_count = empty.count('name="csrf" value="tok"')  # the page shell's own forms
+    assert page.count('name="csrf" value="tok"') == empty_count + 2
+    assert "No open stale flags." in empty
+
+
 def test_unknown_namespace_404(client):
     for path in (
         "/memory/Bad",
@@ -180,6 +260,7 @@ def test_unknown_namespace_404(client):
         "/memory/nowhere/search",
         "/memory/general/merges",
         "/memory/general/conflicts",
+        "/memory/general/stale",
         "/memory/general/sessions",
         "/memory/alpha/node/not-a-uuid",
         "/memory/alpha/fact/not-a-uuid/history",
