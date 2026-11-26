@@ -319,7 +319,7 @@ Run everything below as root (or with sudo) on the host.
 git clone <this repository> /opt/treant
 cd /opt/treant
 export COMPOSE_FILE=/opt/treant/deploy/compose.prod.yml
-docker compose build server          # builds treant:0.1.0 for every Treant service
+docker compose build server          # builds treant:0.1.1 for every Treant service
 install -m 0750 deploy/scripts/treant /usr/local/sbin/treant
 ```
 
