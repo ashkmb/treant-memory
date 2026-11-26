@@ -78,6 +78,12 @@ async def test_guard_check_is_marked_deprecated():
 
 
 @pytest.mark.anyio
+async def test_search_names_the_in_doubt_key():
+    tools = await _tools(build_listing_mcp())
+    assert "`in_doubt`" in tools["search"].description
+
+
+@pytest.mark.anyio
 async def test_listing_mode_refuses_every_call():
     async with Client(build_listing_mcp()) as c:
         for name, args in MINIMAL_ARGS.items():

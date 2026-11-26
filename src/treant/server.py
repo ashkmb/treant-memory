@@ -101,7 +101,8 @@ SEARCH_DESCRIPTION = (
     "and before retrying, and whenever the user refers to past work. Read-only. Returns "
     "`mode` (hybrid, or keyword when the embedder is down) and `hits`, each with namespace, "
     "kind, type, text, node and score; facts reached through the graph from a direct hit are "
-    "included."
+    "included. A fact hit may carry `in_doubt`: code it names may be gone, so verify before "
+    "acting on it."
 )
 BRIEF_DESCRIPTION = (
     "Short orientation to read at the start of a session: current warnings, open threads and "
