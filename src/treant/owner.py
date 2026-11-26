@@ -576,12 +576,19 @@ def dismiss_conflict(db: Database, actor: str, ws: str, conflict_id: int) -> Non
         audit(conn, actor, "conflict.dismiss", {"workspace": ws, "conflict_id": conflict_id})
 
 
+def _settle_edited(db: Database, ws: str) -> None:
+    """Save ``superseded-by-edit`` for edited facts in a transaction of its own, so the refusal
+    of an action on such a flag does not roll the resolution back."""
+    with _graph_unit(db, ws) as conn:
+        stale.resolve_edited(conn, ws)
+
+
 def keep_stale(db: Database, actor: str, ws: str, flag_id: int) -> None:
     """The owner says the fact is still right: resolve its stale flag as ``kept``."""
     if ws == "general":
         raise InvalidInput("unknown namespace")
+    _settle_edited(db, ws)
     with _graph_unit(db, ws) as conn:
-        stale.resolve_edited(conn, ws)
         _resolve(conn, ws, "stale_flags", flag_id, "kept", "id")
         audit(conn, actor, "stale.keep", {"workspace": ws, "flag_id": flag_id})
 
@@ -590,8 +597,8 @@ def retract_stale(db: Database, actor: str, ws: str, flag_id: int) -> None:
     """Retract the flagged fact and resolve its flag as ``retracted``. No fact text is audited."""
     if ws == "general":
         raise InvalidInput("unknown namespace")
+    _settle_edited(db, ws)
     with _graph_unit(db, ws) as conn:
-        stale.resolve_edited(conn, ws)
         (fact_id,) = _resolve(conn, ws, "stale_flags", flag_id, "retracted", "fact_id")
         graph.retract(conn, ws, "fact", str(fact_id))
         audit(

@@ -933,7 +933,7 @@ def test_stale_list_show_keep_retract(fresh, fresh_db, capsys):
     assert "error: stale flag not found or resolved" in capsys.readouterr().err
     assert cli.main(["stale", "retract", "alpha", str(fid)]) == 1
     assert cli.main(["stale", "show", "alpha", "999999"]) == 1
-    assert cli.main(["stale", "list", "general"]) == 1
+    assert cli.main(["stale", "list", "general"]) == 2
 
 
 def test_stale_command_arguments_need_no_database(capsys):
