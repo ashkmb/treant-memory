@@ -435,8 +435,8 @@ as a hash.
 | Action | MCP tools it allows |
 |---|---|
 | `create` | `save_session`, `report_mistake` |
-| `read` | `search`, `brief`, `warnings`, `guard_check` (deprecated) |
-| `update` | `update_fact` |
+| `read` | `search`, `brief`, `warnings`, `repo_facts`, `guard_check` (deprecated) |
+| `update` | `update_fact`, `flag_stale` |
 | `delete` | `retract` |
 
 ```sh

@@ -141,6 +141,20 @@ GUARD_DESCRIPTION = (
     "be determined (`command` when the line did not parse); an empty `unlisted` then does not "
     "mean all clear."
 )
+REPO_FACTS_DESCRIPTION = (
+    "Current facts of this workspace about the named repo and the parts of it (nodes linked to "
+    "it by part_of), for checking them against the repo's code. Matches the repo's name or an "
+    "alias, case-insensitively. Read-only. Returns `facts`, each with id, type, text and node, "
+    "at most 200 and newest first, and `truncated` when more were left out."
+)
+FLAG_STALE_DESCRIPTION = (
+    "Flag a current fact of this workspace whose code tokens (paths, names) are missing from the "
+    "repo at a commit, for the owner to review. `missing` lists {token, commit, subject}: each "
+    "token must appear verbatim in the fact text; commit and subject name the commit that "
+    "removed it. Never changes the fact. Needs the token's update scope. Returns `flagged` "
+    "with `flag_id`, or `flagged` false with `reason` (exists, kept), or `error`: not found, "
+    "invalid input, forbidden."
+)
 
 
 def build_mcp(tools: Tools) -> MCPServer:
@@ -310,6 +324,43 @@ def build_mcp(tools: Tools) -> MCPServer:
         ctx: Context,
     ) -> dict[str, Any]:
         return await _call(ctx, tools.report_mistake, text)
+
+    @server.tool(
+        title="Facts about a repo",
+        description=REPO_FACTS_DESCRIPTION,
+        annotations=_hints(read_only=True, idempotent=True),
+    )
+    async def repo_facts(
+        repo: Annotated[
+            str,
+            Field(description="The repo's name as memory knows it, at most 200 characters."),
+        ],
+        ctx: Context,
+    ) -> dict[str, Any]:
+        return await _call(ctx, tools.repo_facts, repo)
+
+    @server.tool(
+        title="Flag a stale fact",
+        description=FLAG_STALE_DESCRIPTION,
+        annotations=_hints(read_only=False),
+    )
+    async def flag_stale(
+        fact_id: Annotated[str, Field(description="The fact's id, as repo_facts returns it.")],
+        repo: Annotated[
+            str, Field(description="The repo the fact was checked against, as for repo_facts.")
+        ],
+        commit: Annotated[
+            str, Field(description="The repo's HEAD commit id the check ran at (hex).")
+        ],
+        missing: Annotated[
+            list[dict[str, Any]],
+            Field(
+                description="Missing tokens, at most 10 kept: {token, commit, subject}; token is 3-120 characters found verbatim in the fact text, commit and subject (one line) name the commit that removed it."
+            ),
+        ],
+        ctx: Context,
+    ) -> dict[str, Any]:
+        return await _call(ctx, tools.flag_stale, fact_id, repo, commit, missing)
 
     return server
 

@@ -1,4 +1,4 @@
-"""The seven MCP tools as plain sync methods over the verified token's workspace.
+"""The MCP tools as plain sync methods over the verified token's workspace.
 
 Every method runs through ``_run``: action check, then the DB work, with every failure mapped
 to ``{"error": "<category>"}``. Nothing from an exception message ever reaches the caller or
@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from treant import auth, brief, graph, guard, jobs, owner, search, sessions, settings
+from treant import auth, brief, graph, guard, jobs, owner, search, sessions, settings, stale
 from treant.db import Database
 from treant.embed import Embedder
 from treant.errors import InvalidInput, NotFound
@@ -165,3 +165,20 @@ class Tools:
             return {"ok": True}
 
         return self._run("create", go)
+
+    def repo_facts(self, repo: str) -> dict:
+        def go(ctx):
+            name = stale.valid_repo(repo)
+            with self.db.ws_tx(ctx.workspace) as conn:
+                facts, truncated = stale.repo_facts(conn, ctx.workspace, name)
+            return {"facts": facts, "truncated": truncated}
+
+        return self._run("read", go)
+
+    def flag_stale(self, fact_id: str, repo: str, commit: str, missing: list[dict]) -> dict:
+        def go(ctx):
+            terms = settings.load(self.db, ctx.workspace).terms  # before the fact is locked
+            with self.db.ws_tx(ctx.workspace) as conn:
+                return stale.flag(conn, ctx.workspace, fact_id, repo, commit, missing, terms)
+
+        return self._run("update", go)

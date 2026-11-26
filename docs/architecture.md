@@ -75,8 +75,8 @@ A token has the form `trt_<id>_<secret>`. Only `sha256(secret)` is stored, in
 | Action | Tools |
 |---|---|
 | `create` | `save_session`, `report_mistake` |
-| `read` | `search`, `brief`, `warnings`, `guard_check` (deprecated) |
-| `update` | `update_fact` |
+| `read` | `search`, `brief`, `warnings`, `repo_facts`, `guard_check` (deprecated) |
+| `update` | `update_fact`, `flag_stale` |
 | `delete` | `retract` |
 
 The middleware answers a missing or unknown token with a bare `401` and no OAuth challenge.
@@ -340,7 +340,7 @@ flowchart LR
 flowchart TB
   token["Token for acme<br/>actions: create, read"]
   mw["Bearer middleware<br/>sha256 lookup in control.tokens"]
-  action{"Tool needs an action<br/>save_session, report_mistake: create<br/>search, brief, warnings: read<br/>update_fact: update, retract: delete"}
+  action{"Tool needs an action<br/>save_session, report_mistake: create<br/>search, brief, warnings, repo_facts: read<br/>update_fact, flag_stale: update, retract: delete"}
   login["treant_login<br/>connects, inherits nothing"]
   role["SET LOCAL ROLE treant_ws_acme"]
   own[("ws_acme<br/>read and write")]
