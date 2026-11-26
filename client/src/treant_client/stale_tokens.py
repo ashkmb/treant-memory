@@ -4,6 +4,11 @@ Pure functions: pick the file paths and code identifiers a fact names, so the ch
 look them up with ``git ls-files`` / ``git grep``. Precision over recall: anything
 uncertain (URLs, hostnames, globs, absolute or home paths, commands, scrubbed values) is
 not a token. Every ``Token.raw`` is an exact substring of the fact text.
+
+A path must end in a listed file extension, except in directory form: a backticked span
+with a ``/`` that ends in ``/`` (``src/app/``, needle ``src/app``). An extensionless slash
+span without the trailing slash (``and/or``, ``text/html``, ``origin/main``, ``src/app``)
+is not a token, and no path may have a purely numeric segment (``24/7``, ``HTTP/2``).
 """
 
 import re
@@ -70,10 +75,14 @@ def _has_ext(name: str) -> bool:
 
 def _path_needle(raw: str) -> str | None:
     """The git lookup for a path-shaped ``raw``, or None when it is not a path."""
-    needle = _LINE_SUFFIX.sub("", raw).removeprefix("./").rstrip("/")
-    if "/" not in raw and not _has_ext(needle):
+    bare = _LINE_SUFFIX.sub("", raw)
+    needle = bare.removeprefix("./").rstrip("/")
+    # extensionless: only the directory form ("src/app/") is a path
+    if not _has_ext(needle) and not ("/" in needle and bare.endswith("/")):
         return None
     *dirs, last = needle.split("/")
+    if any(seg.isdigit() for seg in (*dirs, last)):
+        return None
     if not all(_DIR_SEGMENT.fullmatch(d) for d in dirs):
         return None
     if not _FILE_SEGMENT.fullmatch(last) or last.strip(".") == "":
@@ -145,7 +154,9 @@ def extract_tokens(text: str, host_terms: Sequence[str] = ()) -> list[Token]:
     found: list[tuple[int, Token]] = []
     masked = list(text)
     for m in _BACKTICK.finditer(text):
-        masked[m.start() : m.end()] = " " * (m.end() - m.start())
+        # "~" fails the unquoted-path lookbehind and tail, so text glued to a span on
+        # either side is not taken as a path
+        masked[m.start() : m.end()] = "~" * (m.end() - m.start())
         tok = _classify_span(m.group(1))
         if tok:
             found.append((m.start(1), tok))

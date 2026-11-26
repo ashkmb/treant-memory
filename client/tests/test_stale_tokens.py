@@ -45,6 +45,18 @@ CASES = [
     ),
     ("Tracked as `alpha.beta.com` upstream.", []),
     ("Relative ../acme/app.py and ~/acme/app.py are skipped.", []),
+    # extensionless slash spans need the trailing slash (directory form)
+    ("Use `and/or`, `TCP/IP`, `input/output` or `n/a` here.", []),
+    ("Support is `24/7`, half is `1/2`.", []),
+    ("Speaks `HTTP/2` and `HTTP/1.1`.", []),
+    ("Returns `text/html` or `application/json`.", []),
+    ("Rebase on `origin/main` from `feat/my-branch` of `owner/repo`.", []),
+    ("Code lives in `src/app` now.", []),
+    ("Code lives in `src/app/` now.", ["src/app/"]),
+    ("Numbered `src/24/` and `2024/05/notes.md` are skipped.", []),
+    # text glued to a closing backtick is not a fresh start
+    ("x `src/a.py`src/b.py y", ["src/a.py"]),
+    ("x src/b.py`src/a.py` y", ["src/a.py"]),
 ]
 
 
