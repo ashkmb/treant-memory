@@ -1,6 +1,6 @@
 """Memory pages: browse nodes, search, node detail, fact edit/retract/restore, fact duplicates,
-merges, graph, conflicts, stale flags, sessions. A login and CSRF are enough, except saving or restoring
-``general`` text over the rules (``force``), which needs a recent login."""
+merges, graph, conflicts, stale flags, sessions. A login and CSRF are enough, except saving or
+restoring ``general`` text over the rules (``force``), which needs a recent login."""
 
 import re
 from collections.abc import Callable
