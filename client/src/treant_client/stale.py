@@ -80,6 +80,7 @@ class RepoIndex:
         self.gitlinks: set[str] = set()  # component suffixes of every gitlink path
         self._idents: dict[str, bool] = {}
         self._range: str | None = None
+        self.listed = False  # False: the file list is unknown, so every token counts as present
 
     def _left(self, cap: float) -> float:
         return min(cap, self.deadline - self.clock())
@@ -89,6 +90,7 @@ class RepoIndex:
         idx = cls(top, deadline, clock)
         r = _git(top, ["ls-files", "-z"], idx._left(GIT_TIMEOUT_S))
         if r is not None and r.returncode == 0:
+            idx.listed = True
             for path in r.stdout.decode("utf-8", "replace").split("\0"):
                 if not path:
                     continue
@@ -105,7 +107,7 @@ class RepoIndex:
         return idx
 
     def has_path(self, needle: str) -> bool:
-        if needle in self.paths:
+        if not self.listed or needle in self.paths:
             return True
         parts = needle.split("/")
         return any("/".join(parts[:i]) in self.gitlinks for i in range(1, len(parts) + 1))
@@ -122,7 +124,8 @@ class RepoIndex:
         if needle not in self._idents:
             last = needle.rsplit(".", 1)[-1]
             found = (
-                needle in self.stems
+                not self.listed
+                or needle in self.stems
                 or self._grep(needle)
                 or ("." in needle and (last in self.stems or self._grep(last)))
                 or bool(self.gitlinks)  # the submodule may hold it; git grep cannot see in

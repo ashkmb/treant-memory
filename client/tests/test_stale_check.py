@@ -420,3 +420,15 @@ def test_removed_directory_has_its_removing_commit(repo, cfg):
     assert _flags(sess)[0]["missing"] == [
         {"token": "src/app/", "commit": short, "subject": "drop src"}
     ]
+
+
+def test_unknown_file_list_counts_everything_present(repo, monkeypatch):
+    import time
+
+    path, _, _ = repo
+    real = stale._git
+    monkeypatch.setattr(
+        stale, "_git", lambda top, args, t: None if args[0] == "ls-files" else real(top, args, t)
+    )
+    idx = stale.RepoIndex.load(str(path), time.monotonic() + 10)
+    assert idx.has_path("src/gone/thing.py") and idx.has_ident("gone_helper")
