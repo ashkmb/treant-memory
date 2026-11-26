@@ -33,6 +33,11 @@ graph that the next session can search.
 - **Shares only what is safe:** know-how reaches the common `general` schema only through a gate of
   rules and two independent judges.
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="An agent saves a session; the next session's brief and search return what it learned" width="100%">
+</p>
+<p align="center"><sub>A real run against the quick start, with distillation on a local 7B model. The agent's MCP calls come from <a href="docs/demo/demo.py">docs/demo/demo.py</a>; <a href="docs/demo/demo.tape">docs/demo/demo.tape</a> re-records it.</sub></p>
+
 Status: source-available, early (0.1.0). The Python package and the CLI are called `treant`.
 
 ## Why Treant
