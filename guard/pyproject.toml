@@ -4,7 +4,8 @@ version = "0.1.0"
 description = "Pre-flight guard for risky shell commands, driven by Treant rule config"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { file = "LICENSE" }
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE"]
 dependencies = []
 
 [project.urls]
@@ -21,7 +22,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
