@@ -426,3 +426,44 @@ def test_neighbourhood_walks_current_edges_both_ways(fresh_db):
     assert capped["nodes"][0]["name"] == "b" and len(capped["nodes"]) == 3 and capped["truncated"]
     assert browse.neighbourhood(fresh_db, "alpha", str(uuid.uuid4()), 1) is None
     assert browse.neighbourhood(fresh_db, "alpha", "not-a-uuid", 1) is None
+
+
+def _stale_setup(db):
+    from treant import stale
+
+    missing = [{"token": "old_name.py", "commit": "abc1234", "subject": "rename"}]
+    with db.ws_tx("alpha") as c:
+        node = graph.add_node(c, "alpha", "instance", "repo", "demo")
+        f1 = graph.add_fact(c, "alpha", "fact", "first uses `old_name.py`", node)
+        f2 = graph.add_fact(c, "alpha", "fact", "second uses `old_name.py`", node)
+        flag1 = stale.flag(c, "alpha", f1, "demo", "a" * 40, missing, [])["flag_id"]
+        flag2 = stale.flag(c, "alpha", f2, "demo", "a" * 40, missing, [])["flag_id"]
+    return str(f1), str(f2), flag1, flag2
+
+
+def test_stale_flags_listing(fresh_db):
+    from treant import owner
+
+    f1, f2, flag1, flag2 = _stale_setup(fresh_db)
+    rows = browse.stale_flags(fresh_db, "alpha")
+    assert [r["id"] for r in rows] == [flag1, flag2]
+    assert rows[0]["fact_id"] == f1 and rows[0]["text"] == "first uses `old_name.py`"
+    assert rows[0]["repo"] == "demo" and rows[0]["commit"] == "a" * 40
+    assert rows[0]["missing"][0]["token"] == "old_name.py"
+    assert "resolution" not in rows[0]
+    owner.edit_fact(fresh_db, "cli", "alpha", f2, "second uses `new_name.py`", None)
+    assert [r["id"] for r in browse.stale_flags(fresh_db, "alpha")] == [flag1]
+    owner.keep_stale(fresh_db, "cli", "alpha", flag1)
+    assert browse.stale_flags(fresh_db, "alpha") == []
+    allrows = browse.stale_flags(fresh_db, "alpha", open_only=False)
+    assert [(r["id"], r["resolution"]) for r in allrows] == [
+        (flag1, "kept"),
+        (flag2, "superseded-by-edit"),
+    ]
+    assert browse.stale_flag(fresh_db, "alpha", flag1)["resolution"] == "kept"
+    assert browse.stale_flag(fresh_db, "alpha", 999999) is None
+    for call in (browse.stale_flags, lambda d, w: browse.stale_flag(d, w, 1)):
+        with pytest.raises(InvalidInput):
+            call(fresh_db, "nosuchws")
+        with pytest.raises(InvalidInput):
+            call(fresh_db, "general")

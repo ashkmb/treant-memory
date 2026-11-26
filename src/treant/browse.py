@@ -781,6 +781,58 @@ def conflicts(db: Database, ws: str, open_only: bool = True) -> list[dict]:
     return out
 
 
+_STALE_COLS = (
+    "sf.id, sf.fact_id::text, f.text, sf.repo, sf.commit, sf.missing, sf.created_at, "
+    "sf.resolved_at, sf.resolution"
+)
+
+
+def _stale_row(row: tuple, with_resolution: bool) -> dict:
+    i, fact_id, text, repo, commit, missing, created, resolved, resolution = row
+    out = {
+        "id": i,
+        "fact_id": fact_id,
+        "text": text,
+        "repo": repo,
+        "commit": commit,
+        "missing": missing,
+        "created_at": created,
+    }
+    if with_resolution:
+        out |= {"resolved_at": resolved, "resolution": resolution}
+    return out
+
+
+def stale_flags(db: Database, ws: str, open_only: bool = True) -> list[dict]:
+    """Stale flags of a workspace. Open ones only where the fact is still current and unedited."""
+    with db.admin_tx() as conn:
+        s = _ws_only(conn, ws)
+        rows = conn.execute(
+            sql.SQL(
+                "SELECT " + _STALE_COLS + " FROM {s}.stale_flags sf "
+                "JOIN {s}.facts f ON f.id = sf.fact_id "
+                "WHERE (NOT %(o)s OR (sf.resolved_at IS NULL AND f.status = 'current' "
+                "AND f.version = sf.fact_version)) ORDER BY sf.id"
+            ).format(s=s),
+            {"o": open_only},
+        ).fetchall()
+    return [_stale_row(r, not open_only) for r in rows]
+
+
+def stale_flag(db: Database, ws: str, flag_id: int) -> dict | None:
+    """One stale flag, open or resolved, with its fact text."""
+    with db.admin_tx() as conn:
+        s = _ws_only(conn, ws)
+        row = conn.execute(
+            sql.SQL(
+                "SELECT " + _STALE_COLS + " FROM {s}.stale_flags sf "
+                "JOIN {s}.facts f ON f.id = sf.fact_id WHERE sf.id = %s"
+            ).format(s=s),
+            (flag_id,),
+        ).fetchone()
+    return None if row is None else _stale_row(row, True)
+
+
 def mistakes(
     db: Database, ws: str | None, limit: int = DEFAULT_LIMIT, offset: int = 0
 ) -> list[dict]:

@@ -636,9 +636,13 @@ treant general list [--status pending|waiting_review|blocked|published|dropped|s
 treant general show <id> | approve <id> [--text "..."] [--yes] [--dry-run] | drop <id>
 treant quarantine list [--workspace W] | show|release|drop <ws> <revision>
 treant merges list <ws> | conflicts list <ws> | duplicates <ws|general>
+treant stale list|show|keep|retract <ws> [id]
 treant jobs list [--status dead] | retry <id> | retry --status dead [--kind K] [--workspace W]
 treant canary list
 ```
+
+`stale keep` marks a flagged fact as still right (it is not flagged again until its text changes);
+`stale retract` retracts the fact. Neither is ever done automatically.
 
 Every owner action that changes something writes `control.audit` with actor `cli`;
 dashboard actions use `dashboard:<user>`. `general show` and `quarantine show` print stored text: run them in
