@@ -1,0 +1,66 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.ashkmb/treant-memory",
+  "title": "Treant",
+  "description": "Self-hosted graph memory for AI coding agents: Postgres + pgvector, isolated workspaces.",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/ashkmb/treant-memory",
+    "source": "github"
+  },
+  "websiteUrl": "https://github.com/ashkmb/treant-memory#quick-start",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/ashkmb/treant-memory:0.1.0",
+      "transport": {
+        "type": "streamable-http",
+        "url": "http://localhost:8000/mcp",
+        "headers": [
+          {
+            "name": "Authorization",
+            "description": "Bearer token for one workspace: docker compose run --rm admin token create <workspace>",
+            "value": "Bearer {token}",
+            "isRequired": true,
+            "isSecret": true,
+            "variables": {
+              "token": {
+                "description": "Treant token",
+                "isRequired": true,
+                "isSecret": true
+              }
+            }
+          }
+        ]
+      },
+      "environmentVariables": [
+        {
+          "name": "TREANT_DATABASE_URL",
+          "description": "Postgres 17 with pgvector (the quick start's docker compose runs one)",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "TREANT_EMBED_URL",
+          "description": "OpenAI-compatible embedding service (the quick start runs one)",
+          "isRequired": true
+        },
+        {
+          "name": "TREANT_EMBED_MODEL",
+          "description": "Embedding model name",
+          "default": "embeddinggemma-300m"
+        },
+        {
+          "name": "TREANT_EMBED_DIMS",
+          "description": "Embedding dimensions",
+          "default": "768"
+        },
+        {
+          "name": "TREANT_BIND",
+          "description": "Listen address inside the container",
+          "default": "0.0.0.0:8000"
+        }
+      ]
+    }
+  ]
+}
