@@ -225,6 +225,10 @@ linux/arm64). To run your own changes instead, run `docker compose build` first:
 same tag from your checkout. `scripts/quickstart-smoke.sh` runs all of the above plus a save and
 a search over MCP; CI runs it on every push.
 
+MCP directories that list a server's tools can run `docker run --rm -i
+ghcr.io/ashkmb/treant-memory:0.1.0 serve --list-tools`: it speaks MCP over stdio, needs no
+database or settings, and refuses every tool call.
+
 `compose.yml` runs `postgres` (`pgvector/pgvector:0.8.7-pg17-bookworm`), `embed` (llama.cpp
 server with EmbeddingGemma 300M), `treant` (`serve`), `worker` and a one-shot `admin` service
 for the owner CLI (`docker compose run --rm admin <command>`). It is meant for one machine.
@@ -331,6 +335,7 @@ Per-workspace settings (`treant workspace set <ws> ...`): `--backend litellm|non
 <br>
 
 ```
+treant serve [--list-tools]                         # --list-tools: tool list only, stdio, no database
 treant bootstrap | upgrade
 treant workspace create|list|show|archive <name>
 treant workspace set <name> [--backend ...] [--publish ...] [--domain ...] [--term ...] [--reset]
