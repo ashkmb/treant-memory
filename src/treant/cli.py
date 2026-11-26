@@ -404,7 +404,7 @@ def _stale_list(db: Database, args: argparse.Namespace) -> int:
 def _stale_show(db: Database, args: argparse.Namespace) -> int:
     r = browse.stale_flag(db, args.workspace, args.id)
     if r is None:
-        print("error: stale flag not found or resolved", file=sys.stderr)
+        print("error: stale flag not found", file=sys.stderr)  # show also shows resolved flags
         return 1
     print(r["text"])
     print(f"repo: {r['repo']} at {r['commit'][:7]}")

@@ -932,7 +932,10 @@ def test_stale_list_show_keep_retract(fresh, fresh_db, capsys):
     assert cli.main(["stale", "keep", "alpha", str(fid)]) == 1
     assert "error: stale flag not found or resolved" in capsys.readouterr().err
     assert cli.main(["stale", "retract", "alpha", str(fid)]) == 1
+    capsys.readouterr()
     assert cli.main(["stale", "show", "alpha", "999999"]) == 1
+    err = capsys.readouterr().err
+    assert "error: stale flag not found\n" in err and "resolved" not in err
     assert cli.main(["stale", "list", "general"]) == 2
 
 
@@ -944,3 +947,12 @@ def test_stale_command_arguments_need_no_database(capsys):
     with pytest.raises(SystemExit) as e:
         cli.main(["stale", "list", "--help"])
     assert e.value.code == 0
+
+
+def test_stale_show_of_an_unknown_id_says_not_found(capsys, monkeypatch):
+    import argparse
+
+    monkeypatch.setattr(cli.browse, "stale_flag", lambda db, ws, fid: None)
+    args = argparse.Namespace(workspace="alpha", id=999999)
+    assert cli._stale_show(None, args) == 1
+    assert capsys.readouterr().err == "error: stale flag not found\n"
