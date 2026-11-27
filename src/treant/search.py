@@ -12,7 +12,7 @@ from typing import Any, Literal
 import psycopg
 from psycopg import sql
 
-from treant import names
+from treant import names, provenance
 from treant.db import Database
 from treant.embed import Embedder, EmbedderUnavailable
 from treant.tokens import TokenContext
@@ -194,6 +194,14 @@ def search(
     limit = max(1, min(int(limit), MAX_LIMIT))
     with db.ws_tx(ctx.workspace) as conn:
         mode, raws = _search_tx(conn, ctx, query, limit, embedder)
+        found = provenance.lookup(
+            conn,
+            names.ws_schema(ctx.workspace),
+            [(r.schema, r.hit["kind"], r.hit["id"]) for r in raws],
+        )
+        for r in raws:
+            if (r.schema, r.hit["kind"], r.hit["id"]) in found:
+                r.hit["source"] = found[(r.schema, r.hit["kind"], r.hit["id"])]
     allowed = {names.ws_schema(ctx.workspace), "general"}
     clean = [r for r in raws if r.schema in allowed]
     faults = len(raws) - len(clean)

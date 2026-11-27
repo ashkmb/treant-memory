@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from db_helpers import DAY1, _journal, _revision
 from fakes import FakeEmbedder
 
 from treant import graph, migrate, names, worker
@@ -20,12 +21,12 @@ def ctx_iso(db, admin_dsn, prefix):
     return TokenContext("c1c1c1c1c1c1", name, frozenset({"read"}))
 
 
-def _embed_ws(db, ws, emb):
+def _embed_ws(db, ws, emb, journals=False):
     """Embed everything pending in ``ws``; a sweep is bounded (oldest first), so loop."""
     schema = worker.sql.Identifier(names.ws_schema(ws))
     while True:
         with db.ws_tx(ws) as conn:
-            items = worker._pending(conn, schema)
+            items = worker._pending(conn, schema, journals)
         if not items:
             return
         vecs = worker._embed_all(emb, items)
@@ -228,3 +229,68 @@ def test_walk_hits_stay_below_direct_hits_that_score_zero(fresh_db):
     walked = [h["score"] for h in res.hits if h["id"] in walk_ids]
     assert direct and walked and min(direct) == 0
     assert max(walked) < min(direct)
+
+
+def _link_revision(db, ws, fact_id, revision_id):
+    with db.admin_tx() as c:
+        c.execute(
+            f"UPDATE {names.ws_schema(ws)}.facts SET revision_id = %s WHERE id = %s",
+            (revision_id, fact_id),
+        )
+
+
+def test_hits_carry_source(db, ctx_iso):
+    ws, emb, m = ctx_iso.workspace, FakeEmbedder(), _marker()
+    with db.ws_tx(ws) as c:
+        plain = graph.add_fact(c, ws, "fact", f"plain {m}")
+        linked = graph.add_fact(c, ws, "fact", f"linked {m}")
+    _link_revision(db, ws, linked, _revision(db, ws, "sess-one", DAY1))
+    _embed_ws(db, ws, emb)
+    res = search(db, emb, ctx_iso, m, limit=8)
+    by_id = {h["id"]: h for h in res.hits}
+    assert all("saved" in h["source"] for h in res.hits)
+    assert by_id[linked]["source"]["session"] == "sess-one"
+    assert by_id[linked]["source"]["confirmed"] == "2026-11-20"
+    assert "session" not in by_id[plain]["source"]
+
+
+def test_journal_hit_carries_source_session(db, ctx_iso):
+    ws, emb, m = ctx_iso.workspace, FakeEmbedder(), _marker()
+    rev = _revision(db, ws, "sess-journal", DAY1)
+    jid = _journal(db, ws, rev, f"journal {m}")
+    _embed_ws(db, ws, emb, journals=True)
+    res = search(db, emb, ctx_iso, m, limit=8)
+    hit = next(h for h in res.hits if h["id"] == jid)
+    assert hit["source"]["session"] == "sess-journal"
+    assert hit["source"]["confirmed"] == "2026-11-20"
+
+
+def test_keyword_mode_hits_carry_source(db, ctx_iso):
+    ws, m = ctx_iso.workspace, _marker()
+    with db.ws_tx(ws) as c:
+        graph.add_fact(c, ws, "fact", f"keyword {m}")
+    res = search(db, FakeEmbedder(down=True), ctx_iso, m, limit=8)
+    assert res.mode == "keyword" and res.hits
+    assert all("saved" in h["source"] for h in res.hits)
+
+
+def test_walked_hits_carry_source(db, ctx_iso):
+    ws, emb = ctx_iso.workspace, FakeEmbedder()
+    with db.ws_tx(ws) as c:
+        n1 = graph.add_node(c, ws, "instance", "service", "svcsrcq")
+        n2 = graph.add_node(c, ws, "instance", "service", "othersrc")
+        graph.add_edge(c, ws, n1, n2, "uses")
+        neighbour = graph.add_fact(c, ws, "fact", "unrelated words entirely", node_id=n2)
+        for i in range(20):
+            graph.add_fact(c, ws, "fact", f"svcsrcq distractor {i}")
+    _embed_ws(db, ws, emb)
+    res = search(db, emb, ctx_iso, "svcsrcq", limit=8)
+    by_id = {h["id"]: h for h in res.hits}
+    assert neighbour in by_id
+    assert all("saved" in h["source"] for h in res.hits)
+    # Reached only by the walk: scored below every direct hit of the workspace.
+    others = [
+        h["score"] for h in res.hits if h["id"] != neighbour and h["namespace"] == "workspace"
+    ]
+    assert others
+    assert by_id[neighbour]["score"] < min(others)

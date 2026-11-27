@@ -1,0 +1,168 @@
+"""Provenance lookups against Postgres, under the workspace role as search runs them."""
+
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+from db_helpers import DAY1, _journal, _revision
+
+from treant import graph, migrate, names
+from treant.provenance import lookup
+
+DAY2 = datetime(2026, 11, 21, 12, 0, tzinfo=UTC)
+DAY3 = datetime(2026, 11, 22, 12, 0, tzinfo=UTC)
+
+
+@pytest.fixture
+def ws(db, admin_dsn, prefix):
+    """A fresh, uniquely named workspace no other test writes to."""
+    name = "sr" + uuid.uuid4().hex[:8]
+    migrate.create_workspace(admin_dsn, prefix, name)
+    return name
+
+
+def _lookup(db, ws, items):
+    with db.ws_tx(ws) as c:
+        return lookup(c, names.ws_schema(ws), items)
+
+
+_TABLES = {"fact": "facts", "node": "nodes", "journal": "journal_entries"}
+
+
+def _saved(db, key):
+    """The item's own created_at as a UTC date, read back (no clock race at midnight)."""
+    schema, kind, item_id = key
+    with db.admin_tx() as c:
+        created = c.execute(
+            f"SELECT created_at FROM {schema}.{_TABLES[kind]} WHERE id = %s", (item_id,)
+        ).fetchone()[0]
+    return created.astimezone(UTC).date().isoformat()
+
+
+def test_fact_saved_in_one_session_confirmed_in_another(db, ws):
+    r1 = _revision(db, ws, "sess-one", DAY1)
+    r2 = _revision(db, ws, "sess-two", DAY2)
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "a provenance fact", revision_id=r1)
+        graph.add_support(c, ws, "fact", fid, r2)
+    key = (names.ws_schema(ws), "fact", fid)
+    assert _lookup(db, ws, [key]) == {
+        key: {"saved": _saved(db, key), "confirmed": "2026-11-21", "session": "sess-one"}
+    }
+
+
+def test_owner_fact_has_saved_only(db, ws):
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "an owner fact")
+    key = (names.ws_schema(ws), "fact", fid)
+    assert _lookup(db, ws, [key]) == {key: {"saved": _saved(db, key)}}
+
+
+def test_quarantined_revision_does_not_count(db, ws):
+    r1 = _revision(db, ws, "sess-one", DAY1)
+    bad = _revision(db, ws, "sess-bad", DAY3, status="quarantined")
+    early_bad = _revision(db, ws, "sess-early", datetime(2026, 11, 1, tzinfo=UTC), "quarantined")
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "a fact with a quarantined support", revision_id=r1)
+        graph.add_support(c, ws, "fact", fid, bad)
+        graph.add_support(c, ws, "fact", fid, early_bad)
+        lone = graph.add_fact(c, ws, "fact", "only quarantined", revision_id=bad)
+    s = names.ws_schema(ws)
+    got = _lookup(db, ws, [(s, "fact", fid), (s, "fact", lone)])
+    assert got[(s, "fact", fid)] == {
+        "saved": _saved(db, (s, "fact", fid)),
+        "confirmed": "2026-11-20",
+        "session": "sess-one",
+    }
+    assert got[(s, "fact", lone)] == {"saved": _saved(db, (s, "fact", lone))}
+
+
+def test_journal_and_node_sources(db, ws):
+    rj = _revision(db, ws, "sess-journal", DAY2)
+    jid = _journal(db, ws, rj)
+    late = _revision(db, ws, "sess-late", DAY3)
+    early = _revision(db, ws, "sess-early", DAY1)
+    with db.ws_tx(ws) as c:
+        nid = graph.add_node(c, ws, "instance", "service", "provnode")
+        graph.add_support(c, ws, "node", nid, late)
+        graph.add_support(c, ws, "node", nid, early)
+    s = names.ws_schema(ws)
+    got = _lookup(db, ws, [(s, "journal", jid), (s, "node", nid)])
+    assert got[(s, "journal", jid)] == {
+        "saved": _saved(db, (s, "journal", jid)),
+        "confirmed": "2026-11-21",
+        "session": "sess-journal",
+    }
+    assert got[(s, "node", nid)] == {
+        "saved": _saved(db, (s, "node", nid)),
+        "confirmed": "2026-11-22",
+        "session": "sess-early",
+    }
+
+
+def test_general_item_saved_only(db, ws):
+    with db.publisher_tx() as c:
+        gid = graph.add_fact(c, "general", "fact", "a general provenance fact")
+    key = ("general", "fact", gid)
+    assert _lookup(db, ws, [key]) == {key: {"saved": _saved(db, key)}}
+
+
+def test_missing_and_foreign_items_absent(db, ws):
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "present")
+    s = names.ws_schema(ws)
+    got = _lookup(
+        db,
+        ws,
+        [(s, "fact", fid), (s, "fact", str(uuid.uuid4())), ("ws_beta", "fact", fid)],
+    )
+    assert list(got) == [(s, "fact", fid)]
+
+
+class _Counting:
+    def __init__(self, conn):
+        self.conn, self.calls = conn, 0
+
+    def execute(self, *args, **kwargs):
+        self.calls += 1
+        return self.conn.execute(*args, **kwargs)
+
+
+def test_many_supports_one_query_per_schema(db, ws):
+    first = _revision(db, ws, "sess-one", DAY1)
+    revs = [_revision(db, ws, f"sess-{i}", DAY2) for i in range(49)]
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "a much confirmed fact")
+        nid = graph.add_node(c, ws, "instance", "service", "provmany")
+        for r in [first, *revs]:
+            graph.add_support(c, ws, "fact", fid, r)
+    with db.publisher_tx() as c:
+        gid = graph.add_fact(c, "general", "fact", "a general fact")
+    s = names.ws_schema(ws)
+    items = [(s, "fact", fid), (s, "node", nid), ("general", "fact", gid)]
+    with db.ws_tx(ws) as c:
+        counting = _Counting(c)
+        got = lookup(counting, s, items)
+    assert counting.calls <= 2
+    assert got[(s, "fact", fid)] == {
+        "saved": _saved(db, (s, "fact", fid)),
+        "confirmed": "2026-11-21",
+        "session": "sess-one",
+    }
+    assert got[(s, "node", nid)] == {"saved": _saved(db, (s, "node", nid))}
+    assert got[("general", "fact", gid)] == {"saved": _saved(db, ("general", "fact", gid))}
+
+
+def test_released_revision_counts(db, ws):
+    rev = _revision(db, ws, "sess-held", DAY2, status="quarantined")
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "a fact held back", revision_id=rev)
+    key = (names.ws_schema(ws), "fact", fid)
+    assert _lookup(db, ws, [key]) == {key: {"saved": _saved(db, key)}}
+    with db.admin_tx() as c:
+        c.execute(
+            f"UPDATE {names.ws_schema(ws)}.revisions SET status = 'stored' WHERE id = %s", (rev,)
+        )
+    assert _lookup(db, ws, [key]) == {
+        key: {"saved": _saved(db, key), "confirmed": "2026-11-21", "session": "sess-held"}
+    }
