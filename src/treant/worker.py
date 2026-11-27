@@ -8,7 +8,9 @@ connections. Logs carry counts and exception type names only.
 Because the embed call runs with no transaction open, a fact can be edited between the read
 and the write. Fact items therefore carry the version they were read at, and the write stores
 the vector only if the fact is still current at that version; the edit's own job embeds the
-new text. Nodes have no text edit path in plan 1 (only retraction), so they carry no version.
+new text. Nodes have no text edit path in plan 1 (only status changes), so they carry no
+version; a node is written only if still current, a journal entry only if its revision is
+still stored.
 """
 
 import logging
@@ -101,24 +103,40 @@ def _embed_all(
 def _upsert(
     conn: psycopg.Connection, schema: sql.Identifier, items: list[Item], vectors: list[list[float]]
 ) -> None:
-    query = sql.SQL(
-        "INSERT INTO {s}.embeddings (item_kind, item_id, vec) VALUES (%s, %s, %s::vector) "
-        "ON CONFLICT (item_kind, item_id) DO UPDATE SET vec = excluded.vec"
-    ).format(s=schema)
-    # A fact's vector is stored only if the fact is still current at the version that was read.
-    # FOR SHARE keeps that row from being edited until this transaction commits, so an edit
-    # cannot slip between the check and the commit and leave a vector of the old text.
+    # Each vector is stored only if its item may still have one: a fact still current at the
+    # version that was read, a node still current, a journal entry whose revision is still
+    # stored. Every status change locks the row (FOR UPDATE) before changing it and deletes the
+    # vector after, so FOR SHARE here orders the two: either the change waits for this commit
+    # and then deletes the vector, or this insert waits for the change and then finds the
+    # item no longer qualifies. A fact edit likewise cannot leave a vector of the old text.
     fact_query = sql.SQL(
         "INSERT INTO {s}.embeddings (item_kind, item_id, vec) "
         "SELECT 'fact', f.id, %s::vector FROM {s}.facts f "
         "WHERE f.id = %s AND f.version = %s AND f.status = 'current' FOR SHARE "
         "ON CONFLICT (item_kind, item_id) DO UPDATE SET vec = excluded.vec"
     ).format(s=schema)
+    node_query = sql.SQL(
+        "INSERT INTO {s}.embeddings (item_kind, item_id, vec) "
+        "SELECT 'node', n.id, %s::vector FROM {s}.nodes n "
+        "WHERE n.id = %s AND n.status = 'current' FOR SHARE "
+        "ON CONFLICT (item_kind, item_id) DO UPDATE SET vec = excluded.vec"
+    ).format(s=schema)
+    journal_query = sql.SQL(
+        "INSERT INTO {s}.embeddings (item_kind, item_id, vec) "
+        "SELECT 'journal', j.id, %s::vector FROM {s}.journal_entries j "
+        "JOIN {s}.revisions r ON r.id = j.revision_id "
+        "WHERE j.id = %s AND r.status = 'stored' FOR SHARE OF j, r "
+        "ON CONFLICT (item_kind, item_id) DO UPDATE SET vec = excluded.vec"
+    ).format(s=schema)
     for (kind, item_id, _, version), vec in zip(items, vectors, strict=True):
         if kind == "fact":
             conn.execute(fact_query, (_literal(vec), item_id, version))
+        elif kind == "node":
+            conn.execute(node_query, (_literal(vec), item_id))
+        elif kind == "journal":
+            conn.execute(journal_query, (_literal(vec), item_id))
         else:
-            conn.execute(query, (kind, item_id, _literal(vec)))
+            raise ValueError("unknown item kind")
 
 
 def _process(

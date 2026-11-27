@@ -197,7 +197,11 @@ Where a general item came from (`control.general_origin`) is readable only by th
 
 `search` embeds the query and ranks by cosine similarity over the workspace's and `general`'s
 vectors (facts and nodes in both, journal entries in the workspace only), then adds facts reached by a one-hop graph walk from the
-matched nodes. Everything runs in one workspace transaction.
+matched nodes. Everything runs in one workspace transaction. Each `embeddings` table has one
+partial HNSW index per item kind (`embeddings_fact_vec_idx`, `embeddings_node_vec_idx` and, in
+workspace schemas, `embeddings_journal_vec_idx`), and search scans each one for its nearest
+vectors with `hnsw.ef_search` set to 100 for its transaction. Vectors exist only for current
+items: a trigger drops an item's vector when it stops being current.
 
 `brief` returns a short text for the start of a session: warnings, open threads and, when a
 repository is named, what memory holds about it (capped at 6000 characters). With

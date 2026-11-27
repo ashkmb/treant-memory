@@ -71,30 +71,52 @@ def _mk(schema: str, ns: str, row: tuple, score: float) -> _Raw:
     return _Raw(schema, hit, None if node_id is None else str(node_id))
 
 
+# Search raises HNSW's candidate list above pgvector's default of 40 for its transaction only,
+# so each per-kind scan can return the full ``limit * 2`` candidates (at most 40) with room.
+EF_SEARCH = 100
+
+
+def _nearest(kind: str) -> str:
+    # The kind is a literal, not a parameter, so the planner matches the partial index
+    # ``embeddings_<kind>_vec_idx`` (``WHERE item_kind = '<kind>'``) and scans it in order.
+    return (
+        "(SELECT item_id, vec <=> %(vec)s::vector AS d FROM {s}.embeddings "
+        f"WHERE item_kind = '{kind}' ORDER BY vec <=> %(vec)s::vector LIMIT %(k)s) e"
+    )
+
+
+# Only current facts and nodes, and journal entries of stored revisions, have a vector: a
+# trigger (or, for a journal, the quarantine and drop paths) deletes it when the item stops
+# qualifying, and the embed worker writes one only while it still qualifies. So the nearest k of
+# each kind are already the nearest k candidates; the joins keep the checks anyway.
 _FACTS_NODES = (
-    "SELECT 'fact' AS kind, f.id, f.type, f.text, n.name, f.node_id, e.vec <=> %(vec)s::vector AS d "
-    "FROM {s}.embeddings e JOIN {s}.facts f ON e.item_kind = 'fact' AND e.item_id = f.id "
+    "SELECT 'fact' AS kind, f.id, f.type, f.text, n.name, f.node_id, e.d "
+    f"FROM {_nearest('fact')} JOIN {{s}}.facts f ON f.id = e.item_id "
     "LEFT JOIN {s}.nodes n ON n.id = f.node_id WHERE f.status = 'current' "
     "UNION ALL "
-    "SELECT 'node', n.id, n.type, n.name, n.name, n.id, e.vec <=> %(vec)s::vector "
-    "FROM {s}.embeddings e JOIN {s}.nodes n ON e.item_kind = 'node' AND e.item_id = n.id "
+    "SELECT 'node', n.id, n.type, n.name, n.name, n.id, e.d "
+    f"FROM {_nearest('node')} JOIN {{s}}.nodes n ON n.id = e.item_id "
     "WHERE n.status = 'current'"
 )
 # ``general`` has no journal; journal entries live in workspace schemas only.
 _JOURNAL = (
-    " UNION ALL SELECT 'journal', j.id, 'journal', j.text, NULL, NULL, e.vec <=> %(vec)s::vector "
-    "FROM {s}.embeddings e JOIN {s}.journal_entries j "
-    "ON e.item_kind = 'journal' AND e.item_id = j.id "
+    " UNION ALL SELECT 'journal', j.id, 'journal', j.text, NULL, NULL, e.d "
+    f"FROM {_nearest('journal')} JOIN {{s}}.journal_entries j ON j.id = e.item_id "
     "JOIN {s}.revisions r ON r.id = j.revision_id AND r.status = 'stored'"
 )
 
 
-def _vector_hits(conn: psycopg.Connection, schema: str, ns: str, vec: str, k: int) -> list[_Raw]:
+def _vector_sql(schema: str) -> sql.Composed:
+    """One index scan per item kind, merged: rows ``(kind, id, type, text, node_name, node_id,
+    distance)`` ordered by distance then id, at most ``%(k)s``, nearest to ``%(vec)s``."""
     inner = _FACTS_NODES + (_JOURNAL if schema != "general" else "")
-    query = sql.SQL("SELECT * FROM (" + inner + ") q ORDER BY d, id LIMIT %(k)s").format(
+    return sql.SQL("SELECT * FROM (" + inner + ") q ORDER BY d, id LIMIT %(k)s").format(
         s=sql.Identifier(schema)
     )
-    rows = conn.execute(query, {"vec": vec, "k": k}).fetchall()
+
+
+def _vector_hits(conn: psycopg.Connection, schema: str, ns: str, vec: str, k: int) -> list[_Raw]:
+    rows = conn.execute(_vector_sql(schema), {"vec": vec, "k": k}).fetchall()
     return [_mk(schema, ns, row[:6], 1.0 - float(row[6])) for row in rows]
 
 
@@ -179,6 +201,7 @@ def _search_tx(
         raws = [r for s, ns in schemas for r in _keyword_hits(conn, s, ns, pattern, limit * 2)]
         raws.sort(key=lambda r: r.hit["id"])
         return "keyword", raws[: limit * 2]
+    conn.execute(sql.SQL("SET LOCAL hnsw.ef_search = {}").format(sql.Literal(EF_SEARCH)))
     direct = [r for s, ns in schemas for r in _vector_hits(conn, s, ns, vec, limit * 2)]
     direct.sort(key=lambda r: (-r.hit["score"], r.hit["id"]))
     direct = direct[: limit * 2]

@@ -1,10 +1,12 @@
 import uuid
 
+import psycopg
 import pytest
 from fakes import FakeEmbedder
+from psycopg import sql
 
 from treant import graph, migrate, names, worker
-from treant.search import search
+from treant.search import _literal, _vector_hits, _vector_sql, search
 from treant.tokens import TokenContext
 
 
@@ -228,3 +230,87 @@ def test_walk_hits_stay_below_direct_hits_that_score_zero(fresh_db):
     walked = [h["score"] for h in res.hits if h["id"] in walk_ids]
     assert direct and walked and min(direct) == 0
     assert max(walked) < min(direct)
+
+
+_VEC_INDEXES = ("embeddings_fact_vec_idx", "embeddings_node_vec_idx", "embeddings_journal_vec_idx")
+
+
+def _plan(conn, query, vec: str, k: int = 16) -> str:
+    # EXPLAIN takes no bind parameters, so the values are inlined client-side; the real search
+    # binds them server-side. The kind stays a literal either way, which is what the partial
+    # indexes need.
+    cur = psycopg.ClientCursor(conn)
+    rows = cur.execute(sql.SQL("EXPLAIN ") + query, {"vec": vec, "k": k}).fetchall()
+    return "\n".join(r[0] for r in rows)
+
+
+def _prefer_vector_index(conn) -> None:
+    # On a small, unanalyzed table the primary key (item_kind, item_id) plus a top-N sort is
+    # also a cheap plan; turn the alternatives off so only an ordered HNSW scan remains.
+    for knob in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
+        conn.execute(f"SET LOCAL {knob} = off")
+
+
+def test_vector_branches_use_partial_indexes(db, ctx_iso):
+    ws = ctx_iso.workspace
+    vec = _literal(FakeEmbedder().embed_query("alpha beta"))
+    with db.ws_tx(ws) as conn:
+        _prefer_vector_index(conn)
+        plan = _plan(conn, _vector_sql(names.ws_schema(ws)), vec)
+    for idx in _VEC_INDEXES:
+        assert idx in plan
+    with db.publisher_tx() as conn:
+        _prefer_vector_index(conn)
+        plan = _plan(conn, _vector_sql("general"), vec)
+    assert "embeddings_fact_vec_idx" in plan and "embeddings_node_vec_idx" in plan
+    assert "embeddings_journal_vec_idx" not in plan
+    assert "journal_entries" not in plan
+
+
+def test_index_scan_matches_exact_scan(db, ctx_iso):
+    # Item n carries n extra words besides the marker, so every distance to the marker is
+    # distinct (1 - 1/sqrt(1 + n)) and the top 16 is the same however it is found. A node's
+    # vector also holds its type, so facts take n = 3i and nodes 3i + 1 (3i + 2 words).
+    ws, emb, m = ctx_iso.workspace, FakeEmbedder(), _marker()
+
+    def words(n: int) -> str:
+        return " ".join([m, *(f"w{n}x{j}" for j in range(n))])
+
+    with db.ws_tx(ws) as c:
+        for i in range(30):
+            graph.add_fact(c, ws, "fact", words(3 * i))
+            graph.add_node(c, ws, "instance", "service", words(3 * i + 1))
+        retracted = [graph.add_fact(c, ws, "fact", f"{m} r{i}") for i in range(20)]
+    _embed_ws(db, ws, emb)
+    with db.ws_tx(ws) as c:
+        for fid in retracted:
+            graph.retract(c, ws, "fact", fid)
+    schema, vec = names.ws_schema(ws), _literal(emb.embed_query(m))
+    with db.ws_tx(ws) as conn:
+        conn.execute("SET LOCAL hnsw.ef_search = 100")
+        _prefer_vector_index(conn)
+        plan = _plan(conn, _vector_sql(schema), vec)
+        assert all(idx in plan for idx in _VEC_INDEXES)
+        by_index = [r.hit["id"] for r in _vector_hits(conn, schema, "workspace", vec, 16)]
+        for knob in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
+            conn.execute(f"SET LOCAL {knob} = on")
+        conn.execute("SET LOCAL enable_indexscan = off")
+        plan = _plan(conn, _vector_sql(schema), vec)
+        assert not any(idx in plan for idx in _VEC_INDEXES)
+        exact = [r.hit["id"] for r in _vector_hits(conn, schema, "workspace", vec, 16)]
+    assert by_index == exact
+    assert len(by_index) == 16
+    assert not set(by_index) & set(retracted)
+
+
+def test_search_unchanged_shape(db, ctx_iso):
+    ws, emb = ctx_iso.workspace, FakeEmbedder()
+    with db.ws_tx(ws) as c:
+        n = graph.add_node(c, ws, "instance", "service", "alphahost")
+        graph.add_fact(c, ws, "fact", "alphahost runs beta", node_id=n)
+    _embed_ws(db, ws, emb)
+    res = search(db, emb, ctx_iso, "alphahost", limit=8)
+    assert res.mode == "hybrid"
+    assert res.hits
+    keys = {"namespace", "kind", "id", "type", "text", "node", "score"}
+    assert all(set(h) == keys for h in res.hits)
