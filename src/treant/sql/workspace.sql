@@ -99,7 +99,34 @@ create table {schema}.embeddings (
     vec vector(768) not null,
     primary key (item_kind, item_id)
 );
-create index on {schema}.embeddings using hnsw (vec vector_cosine_ops);
+-- One vector index per item kind, so a search of one kind walks only that kind's graph.
+create index if not exists embeddings_fact_vec_idx on {schema}.embeddings
+    using hnsw (vec vector_cosine_ops) where item_kind = 'fact';
+create index if not exists embeddings_node_vec_idx on {schema}.embeddings
+    using hnsw (vec vector_cosine_ops) where item_kind = 'node';
+create index if not exists embeddings_journal_vec_idx on {schema}.embeddings
+    using hnsw (vec vector_cosine_ops) where item_kind = 'journal';
+
+-- A fact or node that stops being current loses its vector, so search cannot return it.
+-- Restoring one to current leaves it without a vector; the embed worker sweeps it up.
+-- Runs as the caller (no security definer): the roles that change statuses can delete here.
+create or replace function {schema}.drop_vector_when_not_current() returns trigger
+    language plpgsql
+    set search_path = pg_catalog, pg_temp
+as $$
+begin
+    delete from {schema}.embeddings where item_kind = tg_argv[0] and item_id = new.id;
+    return new;
+end
+$$;
+create or replace trigger facts_drop_vector
+    after update of status on {schema}.facts
+    for each row when (old.status = 'current' and new.status <> 'current')
+    execute function {schema}.drop_vector_when_not_current('fact');
+create or replace trigger nodes_drop_vector
+    after update of status on {schema}.nodes
+    for each row when (old.status = 'current' and new.status <> 'current')
+    execute function {schema}.drop_vector_when_not_current('node');
 
 create table {schema}.targets (
     kind text not null check (kind in ('kube_context', 'aws_profile', 'git_host', 'tf_root',

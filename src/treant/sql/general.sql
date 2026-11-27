@@ -61,8 +61,33 @@ create table if not exists general.embeddings (
     vec vector(768) not null,
     primary key (item_kind, item_id)
 );
-create index if not exists embeddings_vec_idx on general.embeddings
-    using hnsw (vec vector_cosine_ops);
+-- One vector index per item kind; the single index of older releases is dropped.
+drop index if exists general.embeddings_vec_idx;
+create index if not exists embeddings_fact_vec_idx on general.embeddings
+    using hnsw (vec vector_cosine_ops) where item_kind = 'fact';
+create index if not exists embeddings_node_vec_idx on general.embeddings
+    using hnsw (vec vector_cosine_ops) where item_kind = 'node';
+
+-- A fact or node that stops being current loses its vector, so search cannot return it.
+-- Runs as the caller (no security definer): the publisher deletes here with its own grant.
+create or replace function general.drop_vector_when_not_current() returns trigger
+    language plpgsql
+    set search_path = pg_catalog, pg_temp
+as $$
+begin
+    delete from general.embeddings where item_kind = tg_argv[0] and item_id = new.id;
+    return new;
+end
+$$;
+revoke execute on function general.drop_vector_when_not_current() from public;
+create or replace trigger facts_drop_vector
+    after update of status on general.facts
+    for each row when (old.status = 'current' and new.status <> 'current')
+    execute function general.drop_vector_when_not_current('fact');
+create or replace trigger nodes_drop_vector
+    after update of status on general.nodes
+    for each row when (old.status = 'current' and new.status <> 'current')
+    execute function general.drop_vector_when_not_current('node');
 
 -- Grants. Re-applied on every bootstrap. Workspace roles get SELECT here in
 -- create_workspace.
