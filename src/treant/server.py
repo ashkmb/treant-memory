@@ -100,8 +100,9 @@ SEARCH_DESCRIPTION = (
     "named repo, service, cluster or ticket, before proposing a design or a fix, after an error "
     "and before retrying, and whenever the user refers to past work. Read-only. Returns "
     "`mode` (hybrid, or keyword when the embedder is down) and `hits`, each with namespace, "
-    "kind, type, text, node and score; facts reached through the graph from a direct hit are "
-    "included."
+    "kind, type, text, node, score and source (saved date; for this workspace's items also the "
+    "session that first saved it and the date it was last confirmed); facts reached through the "
+    "graph from a direct hit are included."
 )
 BRIEF_DESCRIPTION = (
     "Short orientation to read at the start of a session: current warnings, open threads and "

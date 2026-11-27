@@ -1,3 +1,5 @@
+import uuid
+
 import psycopg
 import pytest
 from fakes import FakeEmbedder
@@ -292,3 +294,45 @@ def test_adversarial_summary_cannot_publish_other_workspace_name(fresh_db):
         ("published", "always drain the cluster first"),  # the fact, rewritten
         ("published", None),  # the innocent concept
     ]
+
+
+def test_search_source_never_names_other_workspace_session(db, ctx_a):
+    from datetime import UTC, datetime
+
+    from test_provenance import _revision
+
+    from treant.search import search
+
+    marker, emb, day = (
+        "zq" + uuid.uuid4().hex[:12],
+        FakeEmbedder(),
+        datetime(2026, 11, 20, tzinfo=UTC),
+    )
+    ids = {}
+    for ws, session in (("alpha", "alpha-only"), ("beta", "beta-only")):
+        with db.ws_tx(ws) as c:
+            ids[ws] = graph.add_fact(c, ws, "fact", f"{ws} note {marker}")
+        revision = _revision(db, ws, session, day)
+        with db.admin_tx() as c:
+            c.execute(
+                f"UPDATE {names.ws_schema(ws)}.facts SET revision_id = %s WHERE id = %s",
+                (revision, ids[ws]),
+            )
+    with db.publisher_tx() as c:
+        general = graph.add_fact(c, "general", "fact", f"general note {marker}")
+    for ws in ("alpha", "beta"):
+        schema = worker.sql.Identifier(names.ws_schema(ws))
+        while True:
+            with db.ws_tx(ws) as c:
+                items = worker._pending(c, schema)
+            if not items:
+                break
+            vecs = worker._embed_all(emb, items)
+            with db.ws_tx(ws) as c:
+                worker._upsert(c, schema, items, vecs)
+    worker.embed_general(db, emb)
+    hits = {h["id"]: h for h in search(db, emb, ctx_a, marker, limit=20).hits}
+    assert hits[ids["alpha"]]["source"]["session"] == "alpha-only"
+    assert ids["beta"] not in hits
+    assert all(h.get("source", {}).get("session") != "beta-only" for h in hits.values())
+    assert set(hits[general]["source"]) == {"saved"}
