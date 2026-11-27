@@ -85,8 +85,10 @@ def _nearest(kind: str) -> str:
     )
 
 
-# Only current items have a vector (a trigger drops it when one stops being current), so the
-# nearest k of each kind are already the nearest k candidates; the joins keep the checks anyway.
+# Only current facts and nodes, and journal entries of stored revisions, have a vector: a
+# trigger (or, for a journal, the quarantine and drop paths) deletes it when the item stops
+# qualifying, and the embed worker writes one only while it still qualifies. So the nearest k of
+# each kind are already the nearest k candidates; the joins keep the checks anyway.
 _FACTS_NODES = (
     "SELECT 'fact' AS kind, f.id, f.type, f.text, n.name, f.node_id, e.d "
     f"FROM {_nearest('fact')} JOIN {{s}}.facts f ON f.id = e.item_id "
