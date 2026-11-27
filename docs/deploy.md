@@ -60,7 +60,8 @@ Each requirement below is stated as the contract the code expects. File referenc
 ### Postgres 17 and pgvector
 
 - Postgres 17 with the pgvector extension, version 0.8 or newer (the schemas use
-  `vector(768)` columns with HNSW indexes, `vector_cosine_ops`). The stack uses
+  `vector(768)` columns with one partial HNSW index per item kind, `vector_cosine_ops`;
+  vectors exist only for current items). The stack uses
   `pgvector/pgvector:0.8.7-pg17-bookworm`, the same image the test suite runs against.
 - No other extension is needed.
 - Two connection strings, two privilege levels:

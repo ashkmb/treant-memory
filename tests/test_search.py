@@ -1,10 +1,12 @@
 import uuid
 
+import psycopg
 import pytest
 from fakes import FakeEmbedder
+from psycopg import sql
 
 from treant import graph, migrate, names, worker
-from treant.search import search
+from treant.search import _literal, _vector_hits, _vector_sql, search
 from treant.tokens import TokenContext
 
 
@@ -228,3 +230,69 @@ def test_walk_hits_stay_below_direct_hits_that_score_zero(fresh_db):
     walked = [h["score"] for h in res.hits if h["id"] in walk_ids]
     assert direct and walked and min(direct) == 0
     assert max(walked) < min(direct)
+
+
+def _plan(conn, query, vec: str) -> str:
+    # Client-side binding: the server plans literal values, as it does for the real search.
+    cur = psycopg.ClientCursor(conn)
+    rows = cur.execute(sql.SQL("EXPLAIN ") + query, {"vec": vec, "k": 16}).fetchall()
+    return "\n".join(r[0] for r in rows)
+
+
+def test_vector_branches_use_partial_indexes(db, ctx_iso):
+    ws = ctx_iso.workspace
+    vec = _literal(FakeEmbedder().embed_query("alpha beta"))
+    with db.ws_tx(ws) as conn:
+        conn.execute("SET LOCAL enable_seqscan = off")
+        plan = _plan(conn, _vector_sql(names.ws_schema(ws)), vec)
+    for idx in ("embeddings_fact_vec_idx", "embeddings_node_vec_idx", "embeddings_journal_vec_idx"):
+        assert idx in plan
+    with db.publisher_tx() as conn:
+        conn.execute("SET LOCAL enable_seqscan = off")
+        plan = _plan(conn, _vector_sql("general"), vec)
+    assert "embeddings_fact_vec_idx" in plan and "embeddings_node_vec_idx" in plan
+    assert "journal" not in plan
+
+
+def test_index_scan_matches_exact_scan(db, ctx_iso):
+    # Item n carries n extra words besides the marker, so every distance to the marker is
+    # distinct (1 - 1/sqrt(1 + n)) and the top 16 is the same however it is found. A node's
+    # vector also holds its type, so facts take n = 3i and nodes 3i + 1 (3i + 2 words).
+    ws, emb, m = ctx_iso.workspace, FakeEmbedder(), _marker()
+
+    def words(n: int) -> str:
+        return " ".join([m, *(f"w{n}x{j}" for j in range(n))])
+
+    with db.ws_tx(ws) as c:
+        for i in range(30):
+            graph.add_fact(c, ws, "fact", words(3 * i))
+            graph.add_node(c, ws, "instance", "service", words(3 * i + 1))
+        retracted = [graph.add_fact(c, ws, "fact", f"{m} r{i}") for i in range(20)]
+    _embed_ws(db, ws, emb)
+    with db.ws_tx(ws) as c:
+        for fid in retracted:
+            graph.retract(c, ws, "fact", fid)
+    schema, vec = names.ws_schema(ws), _literal(emb.embed_query(m))
+    with db.ws_tx(ws) as conn:
+        conn.execute("SET LOCAL hnsw.ef_search = 100")
+        conn.execute("SET LOCAL enable_seqscan = off")
+        by_index = [r.hit["id"] for r in _vector_hits(conn, schema, "workspace", vec, 16)]
+        conn.execute("SET LOCAL enable_seqscan = on")
+        conn.execute("SET LOCAL enable_indexscan = off")
+        exact = [r.hit["id"] for r in _vector_hits(conn, schema, "workspace", vec, 16)]
+    assert by_index == exact
+    assert len(by_index) == 16
+    assert not set(by_index) & set(retracted)
+
+
+def test_search_unchanged_shape(db, ctx_iso):
+    ws, emb = ctx_iso.workspace, FakeEmbedder()
+    with db.ws_tx(ws) as c:
+        n = graph.add_node(c, ws, "instance", "service", "alphahost")
+        graph.add_fact(c, ws, "fact", "alphahost runs beta", node_id=n)
+    _embed_ws(db, ws, emb)
+    res = search(db, emb, ctx_iso, "alphahost", limit=8)
+    assert res.mode == "hybrid"
+    assert res.hits
+    keys = {"namespace", "kind", "id", "type", "text", "node", "score"}
+    assert all(set(h) == keys for h in res.hits)
