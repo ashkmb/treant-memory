@@ -54,8 +54,17 @@ def _lookup(db, ws, items):
         return lookup(c, names.ws_schema(ws), items)
 
 
-def _today():
-    return datetime.now(UTC).date().isoformat()
+_TABLES = {"fact": "facts", "node": "nodes", "journal": "journal_entries"}
+
+
+def _saved(db, key):
+    """The item's own created_at as a UTC date, read back (no clock race at midnight)."""
+    schema, kind, item_id = key
+    with db.admin_tx() as c:
+        created = c.execute(
+            f"SELECT created_at FROM {schema}.{_TABLES[kind]} WHERE id = %s", (item_id,)
+        ).fetchone()[0]
+    return created.astimezone(UTC).date().isoformat()
 
 
 def test_fact_saved_in_one_session_confirmed_in_another(db, ws):
@@ -66,7 +75,7 @@ def test_fact_saved_in_one_session_confirmed_in_another(db, ws):
         graph.add_support(c, ws, "fact", fid, r2)
     key = (names.ws_schema(ws), "fact", fid)
     assert _lookup(db, ws, [key]) == {
-        key: {"saved": _today(), "confirmed": "2026-11-21", "session": "sess-one"}
+        key: {"saved": _saved(db, key), "confirmed": "2026-11-21", "session": "sess-one"}
     }
 
 
@@ -74,7 +83,7 @@ def test_owner_fact_has_saved_only(db, ws):
     with db.ws_tx(ws) as c:
         fid = graph.add_fact(c, ws, "fact", "an owner fact")
     key = (names.ws_schema(ws), "fact", fid)
-    assert _lookup(db, ws, [key]) == {key: {"saved": _today()}}
+    assert _lookup(db, ws, [key]) == {key: {"saved": _saved(db, key)}}
 
 
 def test_quarantined_revision_does_not_count(db, ws):
@@ -89,11 +98,11 @@ def test_quarantined_revision_does_not_count(db, ws):
     s = names.ws_schema(ws)
     got = _lookup(db, ws, [(s, "fact", fid), (s, "fact", lone)])
     assert got[(s, "fact", fid)] == {
-        "saved": _today(),
+        "saved": _saved(db, (s, "fact", fid)),
         "confirmed": "2026-11-20",
         "session": "sess-one",
     }
-    assert got[(s, "fact", lone)] == {"saved": _today()}
+    assert got[(s, "fact", lone)] == {"saved": _saved(db, (s, "fact", lone))}
 
 
 def test_journal_and_node_sources(db, ws):
@@ -108,12 +117,12 @@ def test_journal_and_node_sources(db, ws):
     s = names.ws_schema(ws)
     got = _lookup(db, ws, [(s, "journal", jid), (s, "node", nid)])
     assert got[(s, "journal", jid)] == {
-        "saved": _today(),
+        "saved": _saved(db, (s, "journal", jid)),
         "confirmed": "2026-11-21",
         "session": "sess-journal",
     }
     assert got[(s, "node", nid)] == {
-        "saved": _today(),
+        "saved": _saved(db, (s, "node", nid)),
         "confirmed": "2026-11-22",
         "session": "sess-early",
     }
@@ -123,7 +132,7 @@ def test_general_item_saved_only(db, ws):
     with db.publisher_tx() as c:
         gid = graph.add_fact(c, "general", "fact", "a general provenance fact")
     key = ("general", "fact", gid)
-    assert _lookup(db, ws, [key]) == {key: {"saved": _today()}}
+    assert _lookup(db, ws, [key]) == {key: {"saved": _saved(db, key)}}
 
 
 def test_missing_and_foreign_items_absent(db, ws):
@@ -164,9 +173,24 @@ def test_many_supports_one_query_per_schema(db, ws):
         got = lookup(counting, s, items)
     assert counting.calls <= 2
     assert got[(s, "fact", fid)] == {
-        "saved": _today(),
+        "saved": _saved(db, (s, "fact", fid)),
         "confirmed": "2026-11-21",
         "session": "sess-one",
     }
-    assert got[(s, "node", nid)] == {"saved": _today()}
-    assert got[("general", "fact", gid)] == {"saved": _today()}
+    assert got[(s, "node", nid)] == {"saved": _saved(db, (s, "node", nid))}
+    assert got[("general", "fact", gid)] == {"saved": _saved(db, ("general", "fact", gid))}
+
+
+def test_released_revision_counts(db, ws):
+    rev = _revision(db, ws, "sess-held", DAY2, status="quarantined")
+    with db.ws_tx(ws) as c:
+        fid = graph.add_fact(c, ws, "fact", "a fact held back", revision_id=rev)
+    key = (names.ws_schema(ws), "fact", fid)
+    assert _lookup(db, ws, [key]) == {key: {"saved": _saved(db, key)}}
+    with db.admin_tx() as c:
+        c.execute(
+            f"UPDATE {names.ws_schema(ws)}.revisions SET status = 'stored' WHERE id = %s", (rev,)
+        )
+    assert _lookup(db, ws, [key]) == {
+        key: {"saved": _saved(db, key), "confirmed": "2026-11-21", "session": "sess-held"}
+    }

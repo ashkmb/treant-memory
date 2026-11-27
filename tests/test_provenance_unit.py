@@ -1,5 +1,6 @@
 """Provenance formatting: dates, the earliest session and the newest confirmation."""
 
+import uuid
 from datetime import UTC, datetime, timedelta, timezone
 
 from treant.provenance import format_source, lookup
@@ -43,16 +44,30 @@ def test_confirmed_date_in_utc():
     assert out["confirmed"] == "2026-11-27"
 
 
-class _NoQuery:
+class _Recording:
+    """A connection that records any query and fails it: these lookups must not query."""
+
+    def __init__(self):
+        self.calls = []
+
     def execute(self, *args, **kwargs):
+        self.calls.append(args)
         raise AssertionError("no query expected")
 
 
 def test_lookup_without_items_runs_no_query():
-    assert lookup(_NoQuery(), "ws_alpha", []) == {}
+    conn = _Recording()
+    assert lookup(conn, "ws_alpha", []) == {}
+    assert conn.calls == []
 
 
 def test_lookup_skips_other_schemas():
-    assert (
-        lookup(_NoQuery(), "ws_alpha", [("ws_beta", "fact", "x"), ("control", "fact", "y")]) == {}
-    )
+    # Valid UUIDs and kinds: only the schema filter keeps these out.
+    items = [
+        ("ws_beta", "fact", str(uuid.uuid4())),
+        ("control", "node", str(uuid.uuid4())),
+        ("public", "journal", str(uuid.uuid4())),
+    ]
+    conn = _Recording()
+    assert lookup(conn, "ws_alpha", items) == {}
+    assert conn.calls == []
