@@ -50,6 +50,7 @@ begin
     return new;
 end
 $$;
+revoke execute on function {schema}.drop_vector_when_not_current() from public;
 create or replace trigger facts_drop_vector
     after update of status on {schema}.facts
     for each row when (old.status = 'current' and new.status <> 'current')
