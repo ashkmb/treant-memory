@@ -2,6 +2,7 @@ import uuid
 
 import psycopg
 import pytest
+from db_helpers import _revision
 from fakes import FakeEmbedder
 from psycopg import sql
 
@@ -298,8 +299,6 @@ def test_adversarial_summary_cannot_publish_other_workspace_name(fresh_db):
 
 def test_search_source_never_names_other_workspace_session(db, ctx_a):
     from datetime import UTC, datetime
-
-    from test_provenance import _revision
 
     from treant.search import search
 

@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from db_helpers import DAY1, _journal, _revision
 from fakes import FakeEmbedder
 
 from treant import graph, migrate, names, worker
@@ -20,12 +21,12 @@ def ctx_iso(db, admin_dsn, prefix):
     return TokenContext("c1c1c1c1c1c1", name, frozenset({"read"}))
 
 
-def _embed_ws(db, ws, emb):
+def _embed_ws(db, ws, emb, journals=False):
     """Embed everything pending in ``ws``; a sweep is bounded (oldest first), so loop."""
     schema = worker.sql.Identifier(names.ws_schema(ws))
     while True:
         with db.ws_tx(ws) as conn:
-            items = worker._pending(conn, schema)
+            items = worker._pending(conn, schema, journals)
         if not items:
             return
         vecs = worker._embed_all(emb, items)
@@ -239,8 +240,6 @@ def _link_revision(db, ws, fact_id, revision_id):
 
 
 def test_hits_carry_source(db, ctx_iso):
-    from test_provenance import DAY1, _revision
-
     ws, emb, m = ctx_iso.workspace, FakeEmbedder(), _marker()
     with db.ws_tx(ws) as c:
         plain = graph.add_fact(c, ws, "fact", f"plain {m}")
@@ -253,6 +252,17 @@ def test_hits_carry_source(db, ctx_iso):
     assert by_id[linked]["source"]["session"] == "sess-one"
     assert by_id[linked]["source"]["confirmed"] == "2026-11-20"
     assert "session" not in by_id[plain]["source"]
+
+
+def test_journal_hit_carries_source_session(db, ctx_iso):
+    ws, emb, m = ctx_iso.workspace, FakeEmbedder(), _marker()
+    rev = _revision(db, ws, "sess-journal", DAY1)
+    jid = _journal(db, ws, rev, f"journal {m}")
+    _embed_ws(db, ws, emb, journals=True)
+    res = search(db, emb, ctx_iso, m, limit=8)
+    hit = next(h for h in res.hits if h["id"] == jid)
+    assert hit["source"]["session"] == "sess-journal"
+    assert hit["source"]["confirmed"] == "2026-11-20"
 
 
 def test_keyword_mode_hits_carry_source(db, ctx_iso):
@@ -278,3 +288,9 @@ def test_walked_hits_carry_source(db, ctx_iso):
     by_id = {h["id"]: h for h in res.hits}
     assert neighbour in by_id
     assert all("saved" in h["source"] for h in res.hits)
+    # Reached only by the walk: scored below every direct hit of the workspace.
+    others = [
+        h["score"] for h in res.hits if h["id"] != neighbour and h["namespace"] == "workspace"
+    ]
+    assert others
+    assert by_id[neighbour]["score"] < min(others)
