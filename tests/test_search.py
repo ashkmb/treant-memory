@@ -232,26 +232,39 @@ def test_walk_hits_stay_below_direct_hits_that_score_zero(fresh_db):
     assert max(walked) < min(direct)
 
 
-def _plan(conn, query, vec: str) -> str:
-    # Client-side binding: the server plans literal values, as it does for the real search.
+_VEC_INDEXES = ("embeddings_fact_vec_idx", "embeddings_node_vec_idx", "embeddings_journal_vec_idx")
+
+
+def _plan(conn, query, vec: str, k: int = 16) -> str:
+    # EXPLAIN takes no bind parameters, so the values are inlined client-side; the real search
+    # binds them server-side. The kind stays a literal either way, which is what the partial
+    # indexes need.
     cur = psycopg.ClientCursor(conn)
-    rows = cur.execute(sql.SQL("EXPLAIN ") + query, {"vec": vec, "k": 16}).fetchall()
+    rows = cur.execute(sql.SQL("EXPLAIN ") + query, {"vec": vec, "k": k}).fetchall()
     return "\n".join(r[0] for r in rows)
+
+
+def _prefer_vector_index(conn) -> None:
+    # On a small, unanalyzed table the primary key (item_kind, item_id) plus a top-N sort is
+    # also a cheap plan; turn the alternatives off so only an ordered HNSW scan remains.
+    for knob in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
+        conn.execute(f"SET LOCAL {knob} = off")
 
 
 def test_vector_branches_use_partial_indexes(db, ctx_iso):
     ws = ctx_iso.workspace
     vec = _literal(FakeEmbedder().embed_query("alpha beta"))
     with db.ws_tx(ws) as conn:
-        conn.execute("SET LOCAL enable_seqscan = off")
+        _prefer_vector_index(conn)
         plan = _plan(conn, _vector_sql(names.ws_schema(ws)), vec)
-    for idx in ("embeddings_fact_vec_idx", "embeddings_node_vec_idx", "embeddings_journal_vec_idx"):
+    for idx in _VEC_INDEXES:
         assert idx in plan
     with db.publisher_tx() as conn:
-        conn.execute("SET LOCAL enable_seqscan = off")
+        _prefer_vector_index(conn)
         plan = _plan(conn, _vector_sql("general"), vec)
     assert "embeddings_fact_vec_idx" in plan and "embeddings_node_vec_idx" in plan
-    assert "journal" not in plan
+    assert "embeddings_journal_vec_idx" not in plan
+    assert "journal_entries" not in plan
 
 
 def test_index_scan_matches_exact_scan(db, ctx_iso):
@@ -275,10 +288,15 @@ def test_index_scan_matches_exact_scan(db, ctx_iso):
     schema, vec = names.ws_schema(ws), _literal(emb.embed_query(m))
     with db.ws_tx(ws) as conn:
         conn.execute("SET LOCAL hnsw.ef_search = 100")
-        conn.execute("SET LOCAL enable_seqscan = off")
+        _prefer_vector_index(conn)
+        plan = _plan(conn, _vector_sql(schema), vec)
+        assert all(idx in plan for idx in _VEC_INDEXES)
         by_index = [r.hit["id"] for r in _vector_hits(conn, schema, "workspace", vec, 16)]
-        conn.execute("SET LOCAL enable_seqscan = on")
+        for knob in ("enable_seqscan", "enable_sort", "enable_bitmapscan"):
+            conn.execute(f"SET LOCAL {knob} = on")
         conn.execute("SET LOCAL enable_indexscan = off")
+        plan = _plan(conn, _vector_sql(schema), vec)
+        assert not any(idx in plan for idx in _VEC_INDEXES)
         exact = [r.hit["id"] for r in _vector_hits(conn, schema, "workspace", vec, 16)]
     assert by_index == exact
     assert len(by_index) == 16
